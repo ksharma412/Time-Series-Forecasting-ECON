@@ -1,0 +1,478 @@
+---
+title: "HW3"
+author: "Kratika Sharma"
+date: "3/31/2022"
+output: html_document
+---
+Partner: Chandni
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+including all  libraries
+
+```{r}
+library(tidyverse)
+library(tidyr)
+library(fpp3)
+library(stargazer)
+library(tsibble)
+library(latex2exp)
+library(magrittr)
+library(stringr)
+library(seasonal)
+library(ggplot2)
+```
+
+>> # Q5. Data set global_economy contains the annual Exports from many countries. Select one country to analyse.
+a. Plot the Exports series and discuss the main features of the data.
+b. Use an ETS(A,N,N) model to forecast the series, and plot the forecasts.
+c. Compute the RMSE values for the training data.
+d. Compare the results to those from an ETS(A,A,N) model. (Remember that the trended model is using one more parameter than the simpler model.) Discuss the merits of the two forecasting methods for this data set.
+e. Compare the forecasts from both methods. Which do you think is best?
+
+First finding the unique countries in the data: 
+
+```{r}
+head(global_economy)
+a <- global_economy %>% distinct(Country)
+a
+```
+
+We filter for “Armenia" and visualize Exports for Armenia:
+
+```{r}
+global_economy %>%
+  filter(Country == "Armenia") %>%
+  autoplot(Exports)+labs(title= "Annual Export for Armenia")
+```
+
+#Features of the data observed from the above series
+
+- It is seen that this series starts from 1990 and there is no data for Armenia before this year
+- Upon checking the cause of it, it was found that "In the 1990 elections the ANM won a majority in parliament. Armenia declared sovereignty on August 23, 1990, and independence on September 23, 1991"
+- Towards the start of the series, an upward trend is observed in Export. But soon in early 1990s a downfall is seen in the export until the start of 2000. A fluctuating upward and then again downward trend is observed in 2000s probably due to recession. And then a steady upward trend is seen in Exports of Armenia from late 2009
+- This is an yearly time series where we can see some trend but not much of seasonality in it
+
+#Now developing model using ETS(A,N,N)- SES model to forecast the series
+
+- I got some error when trying to run an ETS model and fit it directly as time series for Armenia has missing values
+- To address that missing value issue, armenia_export is created by filtering global_economy not just for country Armenia but also filtering it for the years the value of export is there is the data
+
+```{r}
+armenia_export <- global_economy %>% 
+  filter(Country == "Armenia" & Year >= year(as.Date("1990-01-01")))
+armenia_export
+```
+
+Fitting ANN model :
+
+```{r}
+fit <- armenia_export %>% 
+  model(ANN = ETS(Exports ~ error("A") + trend("N") + season("N")))
+report(fit)
+```
+
+- Large alpha here is indicative that there is a large adjustment in the estimated level, Lt, each period. Therefore series is not smooth.
+
+Now forecasting the time series 10 periods ahead:
+
+```{r}
+fit %>% 
+  forecast(h = 10) %>%
+  autoplot(armenia_export)+
+  labs(y = "Exports(%of GDP)", title = "Armenia Exports and its forecast 10 periods ahead")
+```
+
+- We could see from the graphs that ETS(A,N,N) has a flat forecast where all forecasts are taking the same value as the last level component. Additionally, from naked eye we can see that there is a large prediction interval observed above which is indicative of high uncertainty in the forecasts
+
+#Computing RMSE values of training data:
+
+```{r}
+accuracy(fit) %>% select(RMSE)
+```
+
+- We observed RMSE of Simple exponential smoothing model (ETS(A,N,N)) as 4.59
+- We proceed now to compare it with the results of a Holt model (ETS(A,A,N))
+- Let's keep the training data for year less than 2010, so that, when we will do visual forecast of both the models we can compare the forecast with actual values
+
+#Creating both SES(ANN) and Holt(AAN) models and comparing them:
+
+```{r}
+ets_ann_aan <- armenia_export %>% filter(Year<=2010)%>%
+  model(
+    ANN = ETS(Exports ~ error("A") + trend("N") + season("N")),
+    AAN = ETS(Exports ~ error("A") + trend("A") + season("N"))
+  )
+tidy_ets_ann_aan<- tidy(ets_ann_aan)
+tidy_ets_ann_aan
+accuracy(ets_ann_aan)
+```
+
+- RMSE of ANN(SES model) is less than AAN(Holt model) as seen above, so simple model is performing better than Holt model here. But that might be because beta* is 0.000100 which is very close to 0 and so it is capturing only regression trend and not controlling the flexibility in the trend
+
+#Now comparing the visual forecast from both models 
+```{r}
+ets_ann_aan %>%
+  forecast(h = 10) %>%
+  autoplot(armenia_export) +
+  labs(y = "Exports(%of GDP)", title = "Armenia Exports and its forecast ")
+```
+Fitting only model AAN:
+```{r}
+fit1 <- armenia_export %>% 
+  model(AAN = ETS(Exports ~ error("A") + trend("A") + season("N")))
+report(fit1)
+```
+
+
+Looking at visual forecast if the entire data is used as training data for both the models
+
+```{r}
+ets_ann_aan1 <- armenia_export %>% 
+  model(
+    ANN = ETS(Exports ~ error("A") + trend("N") + season("N")),
+    AAN = ETS(Exports ~ error("A") + trend("A") + season("N"))
+  )
+ets_ann_aan1 %>%
+  forecast(h = 5) %>%
+  autoplot(armenia_export)
+```
+
+- Comparing the two models above, SES model has lower RMSE and lower AICc than Holt model irrespective of the amount of training data used. So, SES model(ANN) is better than Holt model(AAN)
+- Also, it is seen if we refer to the forecast model where we have taken training data for year<=2010, that the forecasts in later years by Holt model is showing decreasing trend in fact the actual trend was upward during the forecast period
+- While if training data is the entire data available, the exports in Armenia seems to be rising
+- So overall the SES model is better than Holt model in this case 
+
+>>Q10. Compute the total domestic overnight trips across Australia from the tourism dataset.
+a.Plot the data and describe the main features of the series.
+b.Decompose the series using STL and obtain the seasonally adjusted data.
+c.Forecast the next two years of the series using an additive damped trend method applied to the seasonally adjusted data. (This can be specified using decomposition_model().)
+d.Forecast the next two years of the series using an appropriate model for Holt’s linear method applied to the seasonally adjusted data (as before but without damped trend).
+e.Now use ETS() to choose a seasonal model for the data.
+f.Compare the RMSE of the ETS model with the RMSE of the models you obtained using STL decompositions. Which gives the better in-sample fits?
+g.Compare the forecasts from the three approaches? Which seems most reasonable?
+h.Check the residuals of your preferred model.
+
+```{r}
+head(tourism)
+```
+
+```{r}
+trips_au <- tourism %>%
+  summarise(Trips = sum(Trips))
+trips_au %>%
+  autoplot(Trips)+
+  labs(y="Total domestic overnight trips",title = "Australian total domestic overnight trips time series")
+```
+#Features oof the series above
+
+- There is a strong seasonality seen in the data above
+- The series seems to have plateaued till 2008-2009, with 2005 seeing some lowest trips. While a moderate downward trend is observed till 2010 after which the total trips seems to follow a strong upward trend
+
+#Now decomposing the series using STL and plotting only seasonal component
+
+```{r}
+stl_dcmp <- trips_au %>%
+  model(STL(Trips)) %>% components()
+
+stl_dcmp %>%
+  as_tsibble() %>%
+  autoplot(season_adjust)
+```
+
+- The seasonally adjusted plot has tried to adjust the seasonal component, still some seasonality is seen
+
+```{r}
+dcmp <- trips_au %>%
+  model(STL(Trips))
+components(dcmp) %>%  autoplot()
+```
+
+- These above graphs shows an upward trend captured by using STL
+- If we look at seasonal component, we could see how seasonality is seen in the data and it seems to be changing too
+
+#Now, forecasting the next two years of the series using an additive damped trend method applied to the seasonally adjusted data
+
+Let's apply Holt-Winters damped method on the seasonally adjusted data. Since we are taking seasonally adjusted time series, so we will use ETS(A,Ad,N)
+
+```{r}
+stletsdamped <- decomposition_model(
+  STL(Trips),
+  ETS(season_adjust ~ error("A") + trend("Ad") + season("N"))
+)
+trips_au %>%
+  model(dcmp_AAdN = stletsdamped) %>%
+  forecast(h = "2 years") %>%
+  autoplot(trips_au)
+```
+
+Or we can do the same plot by using following code:
+
+```{r}
+trips_au %>%
+  model(
+    decomposition_model(STL(Trips),ETS(season_adjust ~ error("A") + trend("Ad") + season("N")))
+    ) %>%
+  forecast(h = "2 years") %>%
+  autoplot(trips_au)
+```
+
+Above was the forecast 2 years ahead of the time series given. Now to see  Holt-Winters damped method's forecasting correctness, let's use the training data until 2015 Q4
+
+```{r}
+stletsdamped1 <- decomposition_model(
+  STL(Trips),
+  ETS(season_adjust ~ error("A") + trend("Ad") + season("N"))
+)
+trips1<- trips_au %>% mutate(Year = year(Quarter)) %>% mutate(quarter = quarter(Quarter))%>%
+  filter(Year<=2015 & quarter<=4)
+trips1%>%
+  model(dcmp_AAdN = stletsdamped1) %>%
+  forecast(h = "2 years") %>%
+  autoplot(trips_au %>% mutate(Year = year(Quarter)) %>% mutate(quarter = quarter(Quarter))%>%
+  filter(Year<=2017 & quarter<=4))
+```
+
+- This above graph shows that the Holt-Winters damped model has clearly identified the increasing trend at the end of the data, and the forecasts are a close match to the test data
+
+#Now forecasting the next two years of the series using an appropriate model for Holt’s linear method applied to the seasonally adjusted data
+
+Using Holt's linear additive method here on seasonally adjusted data, which is ETS(A,A,N):
+
+```{r}
+trips_au %>%
+  model(decomposition_model(STL(Trips),ETS(season_adjust ~ error("A") +trend("A") +season("N")))
+    ) %>%
+  forecast(h = "2 years") %>%
+  autoplot(trips_au)
+```
+
+Now, again lets see if we choose different training set and keep some data as test set
+
+```{r}
+stletslinear <- decomposition_model(
+  STL(Trips),
+  ETS(season_adjust ~ error("A") + trend("A") + season("N"))
+)
+trips2<- trips_au %>% mutate(Year = year(Quarter)) %>% mutate(quarter = quarter(Quarter))%>%
+  filter(Year<=2015 & quarter<=4)
+trips2%>%
+  model(dcmp_AAN = stletslinear) %>%
+  forecast(h = "2 years") %>%
+  autoplot(trips_au %>% mutate(Year = year(Quarter)) %>% mutate(quarter = quarter(Quarter))%>%
+  filter(Year<=2017 & quarter<=4))
+```
+
+- This method is also able to capture the trend in the data
+
+#Now see the forecast using ETS() to choose a seasonal model for the data 
+
+```{r}
+trips_au %>%
+  model(
+    ETS(Trips)
+    ) %>%
+  forecast(h = "2 years") %>%
+  autoplot(trips_au)
+```
+
+Here now similar to what we did above we are diving the entire dataset into training and test and seeing how forecast matches the test data:
+
+```{r}
+trips3<- trips_au %>% mutate(Year = year(Quarter)) %>% mutate(quarter = quarter(Quarter))%>%
+  filter(Year<=2015 & quarter<=4)
+trips3%>%
+  model(ETS(Trips)) %>%
+  forecast(h = "2 years") %>%
+  autoplot(trips_au %>% mutate(Year = year(Quarter)) %>% mutate(quarter = quarter(Quarter))%>%
+  filter(Year<=2017 & quarter<=4))
+```
+
+#Comparing the RMSE of the ETS model with the RMSE of the models we obtained using STL decompositions and see which gives the better in-sample fits
+
+```{r}
+fit_all_models <- trips_au %>%
+  model(STL_AAdN = stletsdamped,
+    STL_AAN = decomposition_model(STL(Trips),
+                                  ETS(season_adjust ~ error("A") + 
+                                                      trend("A") + 
+                                                      season("N"))),
+    ETS = ETS(Trips)
+    )
+accuracy(fit_all_models)
+```
+
+- Since RMSE of AAN is 762.6375 which is lowest so it gives the best in sample fit
+- Also, above when we plotted the graphs using training data set till 2015Q4 and rest as test, we could see that AAN forecast was closest to the test data, followed by AAdN and then ETS()
+
+#comparing the forecast from all three models
+
+As seen and explained above as well, the model AAN has lowest RMSE and was seen forecasting values closest to the test data when data was divided between training and test. Let's see the same thing in one plot by using above fit_all_models
+
+```{r}
+fit_all_models %>%
+  forecast(h = "2 years") %>%
+  autoplot(trips_au, level = NULL) +
+  guides(colour=guide_legend(title="Forecast"))
+```
+
+#checking residual of best model
+
+```{r}
+best_model <- fit_all_models %>%
+  select(STL_AAN) 
+best_model %>%
+  gg_tsresiduals()
+```
+
+- If we look at above graphs, it is clearly visible that the histograms of the residual is left-skewed and is not centered around zero with a longer right tail, which indicates that probably the forecast from this method will be good, but prediction intervals computed will be inaccurate as that are computed assuming normal distribution
+- There is no significant auto-correlation in the residual series, except at lag 14 where we see a very large spike. In such situation, it is always recommended to check autocorrelation by performing Portmanteau test
+- The time plot of the residuals shows that the variation of the residuals stays approximately the same across the historical data, apart from some outliers
+
+
+- Let's test whether the first l=24 autocorrelations 
+- Applying Portmanteau tests for autocorrelations: ljung_box
+  - null hypothesis: Autocorrelation = 0
+  - Alternate hypothesis : Autocorrelations!= 0
+  -SO, if p-value is large (>0.05), we fail to reject null hypothesis and say that autocorrelations are zero
+  -If p-value is small, we reject null hypothesis, and say that autocorrelations are not zero
+
+Taking l =24,and fitdf = 5, as the best model here is ETS(AAN), which has 5 parameters, so fitdf =5
+
+```{r}
+Box.test(augment(best_model)$.resid, lag=24, fitdf = 5, type = "Lj")
+```
+
+- Post running the test, we found p value as 0.022 <0.05, so we reject null hypothesis and say that autocorrelations are not zero and hence the forecast is biased, as it is one assumption that residuals should not be autocorrelated
+
+
+>> Q14 a. Use ETS() to select an appropriate model for the following series: total number of trips across Australia using tourism, the closing prices for the four stocks in gafa_stock, and the lynx series in pelt. Does it always give good forecasts?
+b. Find an example where it does not work well. Can you figure out why?
+
+
+#Total number of trips across Australia using tourism
+
+```{r}
+aus_trips <- tourism %>%
+  summarise(Trips = sum(Trips))
+aus_trips_fit <- aus_trips %>%
+  model(ETS(Trips))
+report(aus_trips_fit)
+```
+
+```{r}
+aus_trips_fit %>%
+  forecast() %>%
+  autoplot(aus_trips) +
+  ggtitle("Forecasting of total number of trips across Australia")
+```
+
+- The appropriate model which ETS() has selected for this time series is ETS(AAA) which is Holt's Winter additive method, which is used for data which has seasonality and trend in it
+- ETS model forecast look appropriate by looking at above graph as it is replicating the upward trend seen in the series and capturing the seasonality too
+
+Now let's try to look at this model by dividing the data into training and test, so that we can visually see how well the model is capturing the seasonality and trend in test data
+
+```{r}
+aus_trips_fit1 <- aus_trips %>% 
+  mutate(Year = year(Quarter)) %>% 
+  mutate(quarter = quarter(Quarter))%>%
+  filter(Year<=2015 & quarter<=4)%>%
+  model(ETS(Trips))
+aus_trips_fit1 %>%
+  forecast(h = "2 years") %>%
+  autoplot(trips_au %>% mutate(Year = year(Quarter)) %>% mutate(quarter = quarter(Quarter))%>%
+  filter(Year<=2017 & quarter<=4))
+```
+
+- So, the model is closely following the test data
+- Also seen in previous question, ETS(AAA) is not the best model as other model outperform
+- But ETS() model forecast is not that bad
+
+#The closing price for four stocks in gafa_stock
+(Using the hint given in the question)
+
+First, analyzing the gafa_stock series:
+
+```{r}
+gafa_stock %>%
+  autoplot(Close) +
+  facet_grid(vars(Symbol), scales = "free_y")
+```
+
+
+- Seasonality and upward trend followed by downward trend  is seen in all the four stocks
+
+```{r}
+gafa_regular <- gafa_stock %>%
+  group_by(Symbol) %>%
+  mutate(trading_day = row_number()) %>%
+  ungroup() %>%
+  as_tsibble(index = trading_day, regular = TRUE)
+gafa_fit <- gafa_regular %>%
+  model(ETS(Close))
+
+report(gafa_fit%>%filter(Symbol=="AAPL"))
+report(gafa_fit%>%filter(Symbol=="AMZN"))
+report(gafa_fit%>%filter(Symbol=="FB"))
+report(gafa_fit%>%filter(Symbol=="GOOG"))
+```
+
+```{r}
+gafa_fit %>%
+  forecast(h=50) %>%
+  autoplot(gafa_regular %>% group_by_key() %>% slice((n() - 100):n()))
+```
+
+- ETS() has chosen ETS(MNN) which is SES with multiplicative error for all stocks series
+- So, because of the model chosen the forecast is not capturing trend or seasonality, but seems okay as daily stock price might not be varying that much
+
+#Lynx series in pelt
+
+First, observe pelt series
+
+```{r}
+pelt %>% autoplot(Lynx)
+```
+
+
+- This series has no trend or seasonality it seems, but cyclic pattern is surely seen above
+
+```{r}
+pelt %>%
+  model(
+    ETS(Lynx)
+    ) %>%
+  report()
+```
+
+
+```{r}
+pelt %>%
+  model(
+    ETS(Lynx)
+    ) %>%
+  forecast(h=10) %>%
+  autoplot(pelt) +
+  ggtitle("Forecasting of PELT trading records.")
+```
+
+- ETS() has chosen ETS(ANN) for this series, which is Simple exponential smoothing model which only controls the levels but no trend or seasonality
+- Since model used is ETS(ANN) so all the forecasts takes the same value as the last level component, and so we see a flat forecast
+- Very large prediction interval is seen, which will account for uncertainty in the forecast
+- Very large value of alpha also indicates that there has been a large adjustment done in the estimated level, each period, and hence series is not smooth
+- We cannot say that this model is performing well here as it has not captured the cyclic pattern in the forecast. So, we can say that ETS() always do not give good forecasts as seen in this particular case
+
+#Find an example where ETS() does not work well. Can you figure out why?
+
+Well it is seen above that ETS() perform nearly good in total number of trips across Australia using tourism and the closing prices for the four stocks in gafa_stock forecast but it fails to give good forecast in pelt series which has cyclic patter. ETS itself stands for Error, Trend and Seasonality. Also, a time series with cyclic behaviour (but with no trend or seasonality) is stationary. This is because the cycles are not of a fixed length, so before we observe the series we cannot be sure where the peaks and troughs of the cycles will be.
+
+As stated by Hyndman too, "The class of ETS models (exponential smoothing within a state space framework) allows for seasonality but not cyclicity. For example, the ETS(A,A,A) model has an additive trend and additive seasonal pattern. However, there is no ETS model that can reproduce aperiodic cyclic behavior."(para9)
+
+## References: 
+
+- Hyndman, Rob J. “Cyclic and Seasonal Time Series.” Portrait of the Author, 14 Dec. 2011,            https://robjhyndman.com/hyndsight/cyclicts/#:~:text=The%20class%20of%20ETS%20models,can%20       reproduce%20aperiodic%20cyclic%20behaviour. 
+
+- Hyndman, Rob J., and George Athanasopoulos. Forecasting: Principles and Practice. OTexts,           2021. 
+
+- “Independence of Armenia.” Encyclopædia Britannica, Encyclopædia Britannica, Inc.,                  https://www.britannica.com/place/Armenia/Independence. 
