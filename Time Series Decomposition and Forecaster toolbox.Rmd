@@ -1,0 +1,866 @@
+---
+title: "HW2_Kratika"
+author: "Kratika Sharma"
+date: "4/1/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+including all the libraries:
+
+```{r}
+library(tidyverse)
+library(tidyr)
+library(fpp3)
+library(stargazer)
+library(tsibble)
+library(latex2exp)
+library(magrittr)
+library(stringr)
+library(seasonal)
+library(ggplot2)
+library(gridExtra)
+```
+
+>>Chapter 3
+
+>> Q5. For the following series, find an appropriate Box-Cox transformation in order to stabilise the variance. Tobacco from aus_production, Economy class passengers between Melbourne and Sydney from ansett, and Pedestrian counts at Southern Cross Station from pedestrian.
+
+#Tobacco from aus_production
+
+```{r}
+#autoplot for Tobacco
+autoplot(aus_production, Tobacco)+
+  labs(title = "Tobacco Production in Tonnes")
+
+#log transformed plot 
+aus_production %>%
+  autoplot(log(Tobacco))+ggtitle("Logarithmic Plot of Australian Tobacco Production")
+
+#Box-Cox transformation
+lambda <- aus_production %>%
+  features(Tobacco, features = guerrero) %>%
+  pull(lambda_guerrero)
+
+aus_production %>%
+  autoplot(box_cox(Tobacco, lambda)) +
+  labs(y = "", title = TeX(paste0("Transformed Tobacco Production with $\\lambda$ = ",
+         round(lambda,2))))
+```
+
+Findings from above graphs
+
+- As per mathematical transformation, if the data shows variation that increases or decreases with the level of the series, then a transformation can be useful
+- Taking a close look at autoplot of Tobacco from aus_production(the first graph), we see the variation at different level of series is almost constant. So ideally, a strong transformation is not needed here
+- But in second graph, we looked at the logarithmic transformation of the series. And our conclusion above was affirmed here looking at this plot as there was not much change seen observed in the series, just the scale of measurement was changed
+- A useful family of transformations, that includes both logarithms and power transformations, is the family of Box-Cox transformations (Box & Cox, 1964), which depend on the parameter  
+λ
+- We checked the Box-Cox transformation too and again the series does not seem to change much. Also, since lambda is close to 1 so there won't be much change in the shape of the time series
+
+
+#Economy class passengers between Melbourne and Sydney from ansett
+
+```{r}
+#fetching data for economy class between melbourne and sydney
+mel_syd <- ansett %>%
+  filter(Class == "Economy",
+         Airports == "MEL-SYD")
+
+#autoplot for Economy class Passengers Between Melbourne and Sydney
+autoplot(mel_syd, Passengers)+
+  labs(title = "Economy class Passengers Between Melbourne and Sydney")
+
+#log transformed plot 
+mel_syd %>%
+  autoplot(log(Passengers))+ggtitle("Logarithmic Plot of Economy class Passengers Between Melbourne and Sydney")
+
+#Box-Cox transformation
+lambda <- mel_syd %>%
+  features(Passengers, features = guerrero) %>%
+  pull(lambda_guerrero)
+
+mel_syd %>%
+  autoplot(box_cox(Passengers, lambda)) +
+  labs(y = "", title = TeX(paste0("Transformed Number of Passengers with $\\lambda$ = ",
+         round(lambda,2))))
+
+```
+
+Findings from above graphs
+
+- As per mathematical transformation, if the data shows variation that increases or decreases with the level of the series, then a transformation can be useful
+- Taking a close look at autoplot of (the first graph), we see the variation at different level of series is almost constant. So ideally, a strong transformation is not needed here
+- We checked the Box-Cox transformation too and again the series does not seem to change much. - With a λ of 2, it is essentially a transformation of Y^2 or Passengers^2. It shows the variation a little more clear
+
+#Pedestrian counts at Southern Cross Station from pedestrian
+
+```{r}
+#Hourly Pedestrian Counts at Southern Cross Station and transformation
+southern_cross <- pedestrian %>%
+  filter(Sensor == "Southern Cross Station") 
+
+autoplot(southern_cross, Count)+
+  labs(title = "Hourly Pedestrian Counts at Southern Cross Station")
+
+lambda <- southern_cross %>%
+  features(Count, features = guerrero) %>%
+  pull(lambda_guerrero)
+
+southern_cross %>%
+  autoplot(box_cox(Count, lambda)) +
+  labs(y = "", title = TeX(paste0("Transformed Hourly Pedestrian Counts with $\\lambda$ = ",
+         round(lambda,2))))
+
+#Daily Pedestrian Counts at Southern Cross Station and transformation
+southern_cross <- southern_cross %>%
+  index_by(Date) %>%
+  summarise(Count = sum(Count))
+
+autoplot(southern_cross, Count)+
+  labs(title = "Daily Pedestrian Counts at Southern Cross Station")
+
+lambda <- southern_cross %>%
+  features(Count, features = guerrero) %>%
+  pull(lambda_guerrero)
+
+southern_cross %>%
+  autoplot(box_cox(Count, lambda)) +
+  labs(y = "", title = TeX(paste0("Transformed Daily Pedestrian Counts with $\\lambda$ = ",
+         round(lambda,2))))
+
+#Weekly Pedestrian Counts at Southern Cross Station and transformation
+southern_cross <- southern_cross %>%
+  mutate(Week = yearweek(Date)) %>%
+  index_by(Week) %>%
+  summarise(Count = sum(Count))
+
+autoplot(southern_cross, Count)+
+  labs(title = "Weekly Pedestrian Counts at Southern Cross Station")
+
+lambda <- southern_cross %>%
+  features(Count, features = guerrero) %>%
+  pull(lambda_guerrero)
+
+southern_cross %>%
+  autoplot(box_cox(Count, lambda)) +
+  labs(y = "", title = TeX(paste0("Transformed Weekly Pedestrian Counts with $\\lambda$ = ",
+         round(lambda,2))))
+
+```
+
+Features of the data
+
+- The hourly and daily data for pedestrian counts at the Southern Cross Station were not that readable, but the weekly pedestrian counts show the variations.Since lambda was closer to 1 for the weekly data, the transformed data is mostly just shifted downwards with little change in the shape of the time series.
+
+We can see, the size of variance across difference seasons is already stabilized in original data, so box-cox transformation (using optimal lambda value) is not making any reasonable impact on the data. In all of the 3 cases, the variance in seasonality is already stabilized, and it would be better to separate the seasonality, trend-cycle and error (or noise) using the STL decomposition and analyze each component separately to get better insights.
+
+
+>>Q7. a. Plot the time series. Can you identify seasonal fluctuations and/or a trend-cycle?
+b. Use classical_decomposition with type=multiplicative to calculate the trend-cycle and seasonal indices.
+c. Do the results support the graphical interpretation from part a?
+d. Compute and plot the seasonally adjusted data.
+e. Change one observation to be an outlier (e.g., add 300 to one observation), and recompute the seasonally adjusted data. What is the effect of the outlier?
+f. Does it make any difference if the outlier is near the end rather than in the middle of the time series?
+
+#Consider the last five years of the Gas data from aus_production.
+
+```{r}
+gas <- tail(aus_production, 5*4) %>% select(Gas)
+```
+
+#plotting time series - autoplot, seasonal plot
+
+```{r}
+gas %>% autoplot(Gas) + ggtitle("Autoplot of gas production in australia")
+
+gas %>%
+  gg_season(Gas)+ggtitle("Seasonal Plot of gas production in australia")
+```
+
+Observations
+- It is observed from the autoplot that there is an increasing trend in the series with seasonality
+- Seasonal plot confirms the seasonality in the time series. Seasonal plot suggests that the Gas production is increasing from Q1 to Q3 and decreasing after that every year
+
+
+#Use classical_decomposition with type=multiplicative to calculate the trend-cycle and seasonal indices.
+
+```{r}
+#plotting the multiplicative classical decomposition of the time series
+gas %>%
+  model(
+    classical_decomposition(Gas, type = "multiplicative")
+  ) %>%
+  components() %>%
+  autoplot() +
+  labs(title = "Classical additive decomposition of Gas Production in Australia")
+
+#components of classical decomposition
+gas_decom <-as_tsibble(gas) %>%
+  model(classical_decomposition(Gas, type = "multiplicative")) %>%
+  components()
+
+gas_decom
+```
+
+Observations
+
+- The results of the multiplicative classical decomposition show a quarterly seasonal component with a frequency of 1 year
+- The trend-cycle component of decomposition can show an overall upward trend with a somewhat plateau between mid 2007 to mid 2008. Additionally, we can see there is no data before 2006 and after 2010 as classical decomposition works on moving averages. Consequently, there is also no estimate of the remainder component for the same time periods
+- Remainder component of around 1 is seen overall
+- The classical decomposition able to capture the seasonal component in the series too
+
+#Do the results support the graphical interpretation from part a?
+
+So, as explained above the results of classical decomposition do support the interpretation from part a.
+
+#Plotting the seasonally adjusted data
+
+```{r}
+g1 <- gas_decom %>%
+  as_tsibble() %>%
+  autoplot(Gas, colour = "gray") +
+  geom_line(aes(y=season_adjust, colour = "Seasonally Adjusted")) +
+  geom_line(aes(y=trend, colour = "Trend"))+
+  labs(title = "Seasonally Adjusted Gas Production")
+
+g1
+```
+
+Observations
+
+- Highlighted above shows the seasonally adjusted time series. It also shows an upward trend in the series
+- This line plot for seasonally adjusted, that means we have removed the seasonal component from the data and so it has only trend and remainder component in it. The peaks and troughs in the series are not to be confused with seasonality in the data, in fact those are because of the remainder component which is still present in time series after doing seasonal adjustment
+
+
+#Now changing one observation to be an outlier (e.g., adding 300 to one observation), and recomputing the seasonally adjusted data to understand the effect of this outlier to it
+
+```{r}
+gas %>% select(Gas)
+```
+
+
+```{r}
+g2 <- gas %>%
+  mutate(Gas = ifelse(Gas == 245, Gas + 300, Gas)) %>%
+  model(classical_decomposition(Gas, type = "multiplicative")) %>%
+  components() %>%
+  as_tsibble() %>%
+  autoplot(Gas, colour = "gray") +
+  geom_line(aes(y=season_adjust, colour = "Seasonally Adjusted")) +
+  geom_line(aes(y=trend, colour = "Trend"))+
+  labs(title = "Seasonally Adjusted Gas Production with an Outlier")
+  
+g2
+```
+
+
+#Viewing both the seasonally adjusted plots(one without outlier and one with outlier:
+
+```{r}
+grid.arrange(g1, g2, nrow = 2)
+```
+
+
+
+Observations
+
+- If we observe seasonally adjusted plot in both the plots above and compare
+- It can be seen that seasonally adjusted data has changed a little after adding an outlier
+- We can see peaks and troughs in that seasonally adjusted data to have changed, like 2006Q1 has a trough and the gas is below 200 units in the graph without outlier, while the same is above 200 with a peak in with outlier
+- In classical decomposition, we assume that the seasonal component is constant from year to year. So, an outlier has caused a spike in seasonally adjusted data 
+- Similarly, we can see changes in trend more than seasonally adjusted data, like in graph without outlier we see trend to be rising sharply but in the graph with outlier it looks a different trend
+
+
+#Does it make any difference if the outlier is near the end rather than in the middle of the time series?
+
+```{r}
+head(gas)
+```
+
+
+```{r}
+gas_1 <- gas
+gas_1[1,1]<- gas[1,1]+300
+g3 <- gas_1 %>%
+  model(classical_decomposition(Gas, type = "multiplicative")) %>%
+  components() %>%
+  as_tsibble() %>%
+  autoplot(Gas, colour = "gray") +
+  geom_line(aes(y=season_adjust, colour = "Seasonally Adjusted")) +
+  geom_line(aes(y=trend, colour = "Trend"))+
+  labs(title = "Seasonally Adjusted Gas Production with an Outlier at starting of series")
+  
+g3
+```
+
+#Viewing all three the seasonally adjusted plots(one without outlier, one with outlier at some where in between the data, one with outlier at starting of series):
+
+```{r}
+grid.arrange(g1, g2, g3 , nrow = 3)
+```
+
+Observations
+
+- Upon adding outlier to the first data point of the time series, we can see that it also affect the trend and seasonally adjusted data 
+- Although, on comparing all three graphs, it is visible that the addition of outlier in between the data has impacted the trend and seasonally adjusted data more than adding it to the beginning of time series. But adding outlier anywhere in the time series, starting or in between, both can see some effect on the seasonally adjusted data as well as trend
+
+>>Q10. This exercise uses the canadian_gas data (monthly Canadian gas production in billions of cubic metres, January 1960 – February 2005).
+a. Plot the data using autoplot(), gg_subseries() and gg_season() to look at the effect of the changing seasonality over time.1
+b. Do an STL decomposition of the data. You will need to choose a seasonal window to allow for the changing shape of the seasonal component.
+c. How does the seasonal shape change over time? [Hint: Try plotting the seasonal component using gg_season().]
+d. Can you produce a plausible seasonally adjusted series?
+e. Compare the results with those obtained using SEATS and X-11. How are they different?
+
+
+#Plotting the data using autoplot(), gg_subseries() and gg_season() to look at the effect of the changing seasonality over time.
+
+```{r}
+#autoplot
+canadian_gas %>%
+  autoplot(Volume)+
+  labs(title = "Monthly Canadian Gas Production",
+       subtitle = "autoplot()")
+
+#subseries plot
+canadian_gas %>%
+  gg_subseries(Volume)+
+  labs(title = "Monthly Canadian Gas Production",
+       subtitle = "gg_subseries()")
+
+#seasonal plot
+canadian_gas %>%
+  gg_season(Volume)+
+  labs(title = "Monthly Canadian Gas Production",
+       subtitle = "gg_season()")
+
+```
+
+Observations from above graphs
+
+- Autoplot of canadian gas production shows an upward trend till 1975 then a little but plateau till 1990 and then again an upward trend till 2000. This plot also shows seasonality in the data
+- From 1979, the seasonal plot shows that gas volume is high from September until January and then going down with different spikes seen in different months every year. Though before 1970s a slight rise is seen from Sep to Jan but slight downward trend or almost plateau in other months
+
+
+#Looking at STL decomposition of the data
+
+(ignoring the "You will need to choose a seasonal window to allow for the changing shape of the seasonal component" and taking default STL() function, which takes seasonal window of season(window=13), and the trend window chosen automatically from the seasonal period. The default setting for monthly data is trend(window=21) )
+
+```{r}
+canadian_gas %>%
+  model(
+    STL(Volume)) %>%
+  components() %>%
+  autoplot()+
+  labs(title = "STL decomposition of Canadian Gas Production")
+```
+
+Observations from above
+
+- The trend component is able to capture the trend in the data, increasing till somewhere between 1970-75, then almost plateau till somewhere between 1985-1990 and then increasing after that
+- The remainder component is around zero
+- The season_year component is seen to be less and same till sometime before 1970 and then it starts changing and increasing and then decreasing from 1990 and with changing seasonality too as the shape of the graph in changing
+
+
+#checking if the seasonal shape change over time in STL decomposition
+
+As seen from above graph too(season_year), the seasonality component is changing with time
+
+Using the hint: [Hint: Try plotting the seasonal component using gg_season().]
+
+```{r}
+dcmp1 <- canadian_gas %>%
+  model(stl = STL(Volume))
+components(dcmp1)
+
+components(dcmp1) %>%
+  as_tsibble() %>%
+  gg_season(season_year)
+```
+
+
+The above seasonal plot also suggest that seasonality is changing over time. Every year is seeing almost similar patterns from November to march. But different years see different peaks and troughs.
+
+#Plotting a plausible seasonally adjusted series
+
+```{r}
+components(dcmp1) %>%
+  as_tsibble() %>%
+  autoplot(season_adjust)+
+  labs(title = "Seasonally Adjusted graph of Canadian Gas Production") 
+```
+
+
+
+#Compare the results with those obtained using SEATS and X-11. How are they different?
+
+First looking into X11
+
+```{r}
+x11_dcmp <- canadian_gas %>%
+  model(x11 = X_13ARIMA_SEATS(Volume ~ x11())) %>%
+  components()
+autoplot(x11_dcmp) +
+  labs(title =
+    "Decomposition of Canadian gas production using X-11.")
+```
+
+Looking at SEATS
+
+```{r}
+seats_dcmp <- canadian_gas %>%
+  model(seats = X_13ARIMA_SEATS(Volume ~ seats())) %>%
+  components()
+autoplot(seats_dcmp) +
+  labs(title =
+    "Decomposition of Canadian gas production using SEATS")
+```
+
+#looking at trend with all the methods: STL, X11 and SEATS
+
+```{r}
+#STL
+stl_d_trend <- components(dcmp1) %>% as_tsibble()%>%
+  autoplot(trend) +
+  labs(title = "Trend from STL decomposition of Canadian gas Production")
+
+
+#x11
+x11_d_trend <- x11_dcmp %>%
+  autoplot(trend) +
+  labs(title = "Trend from x11 decomposition of Canadian gas Production") 
+
+#seats
+seats_d_trend <- seats_dcmp %>%
+  autoplot(trend) +
+  labs(title = "Trend from seats decomposition of Canadian gas Production") 
+
+grid.arrange(stl_d_trend, x11_d_trend, seats_d_trend , nrow = 3, heights=c(100,100,100))
+```
+
+
+Observations
+
+- It can be seen that all the decomposition methods , STL, X11 and SEATS are able to capture the trend in the series. But STL trend is comparatively a smooth graph while x11 and seats are shaky
+- The smooth trend-cycle component graph in STL in comparison to X11 and SEATS, is justified as of many advantages STL has over x11 and seats, one is that its seasonal and trend component is not affected by unusual observations
+
+#looking at seasonal component of the data with all the methods: STL, X11 and SEATS
+
+```{r}
+#STL
+stl_d_s <- components(dcmp1) %>% as_tsibble()%>%
+  autoplot(season_year) +
+  labs(title = "Seasonal component of data from STL decomposition of Canadian gas Production")
+
+
+#x11
+x11_d_s <- x11_dcmp %>% as_tsibble() %>%
+  autoplot(seasonal) +
+  labs(title = "Seasonal component of data from x11 decomposition of Canadian gas Production") 
+
+#seats
+seats_d_s <- seats_dcmp %>% as_tsibble() %>%
+  autoplot(seasonal) +
+  labs(title = "Seasonal component of data from seats decomposition of Canadian gas Production") 
+
+grid.arrange(stl_d_s, x11_d_s, seats_d_s , nrow = 3, heights=c(100,100,100))
+```
+
+
+- This time series has seen change in seasonality over time
+- The seasonal components seems to be different between STL and X11 and seats method. Like focus on graphs before 1975, which is different in STL from X11 and Seats
+- If you observe below graphs, where we can see seasonal variations in the actual data compared to seasonal component in STL, X11 and SEATS method. We can see that STL is able to capture more of the actual trend. Like for years before 1970s, we can see in STL decomposition that months like Jun, Jul, Aug are not seeing steep drop like the one seen in actual seasonal data. But X11 and SEATS are showing similar seasonality but not very close to what is seen in actual data
+- The reason might be that , in STL, the seasonal component is allowed to change over time, and the rate of change can be controlled by the user
+
+
+```{r}
+#seasonal plot of actual data
+canadian_gas %>%
+  gg_season(Volume)+
+  labs(title = "Monthly Canadian Gas Production",
+       subtitle = "gg_season()")
+
+#sesonal component from x11 
+x11_dcmp %>%
+  as_tsibble() %>%
+  gg_season(seasonal)+
+  labs(title = "Monthly Canadian Gas Production-X11 method",
+       subtitle = "gg_season()")
+
+#sesonal component from seats 
+seats_dcmp %>%
+  as_tsibble() %>%
+  gg_season(seasonal)+
+  labs(title = "Monthly Canadian Gas Production-SEATS method",
+       subtitle = "gg_season()")
+
+#sesonal component from STL 
+components(dcmp1) %>%
+  as_tsibble() %>%
+  gg_season(season_year)+
+  labs(title = "Monthly Canadian Gas Production-STL decomposition method",
+       subtitle = "gg_season()")
+```
+
+#looking at remainder component of tht data with all the methods: STL, X11 and SEATS
+
+```{r}
+#STL
+stl_d_r <- components(dcmp1) %>% as_tsibble()%>%
+  autoplot(remainder) +
+  labs(title = "Remainder component of data from STL decomposition of Canadian gas Production")
+
+
+#x11
+x11_d_r <- x11_dcmp %>% as_tsibble() %>%
+  autoplot(irregular) +
+  labs(title = "Remainder component of data from x11 decomposition of Canadian gas Production") 
+
+#seats
+seats_d_r <- seats_dcmp %>% as_tsibble() %>%
+  autoplot(irregular) +
+  labs(title = "Remainder component of data from seats decomposition of Canadian gas Production") 
+
+grid.arrange(stl_d_r, x11_d_r, seats_d_r , nrow = 3, heights=c(100,100,100))
+```
+
+
+Observations
+
+- The remainder component is around zero in STL method and around 1 in x11 and seats method
+
+
+>> Chapter 5
+
+>>Q3. Apply a seasonal naïve method to the quarterly Australian beer production data from 1992. Check if the residuals look like white noise, and plot the forecasts. The following code will help
+
+#using the code provided in the question itself
+
+```{r}
+recent_production <- aus_production %>%
+  filter(year(Quarter) >= 1992)
+recent_production
+```
+
+```{r}
+# Extract data of interest
+recent_production <- aus_production %>%
+  filter(year(Quarter) >= 1992)
+# Define and estimate a model
+fit <- recent_production %>% model(SNAIVE(Beer))
+# Look at the residuals
+fit %>% gg_tsresiduals()
+# Look a some forecasts
+fit %>% forecast() %>% autoplot(recent_production)
+```
+
+
+Conclusions
+
+- Visually, the forecast looks reasonable with seasonal naive model
+- If we look at above graphs, it is clearly visible that the histograms of the residual is slightly skewed, which indicates that probably the forecast from this method will be good, but prediction intervals computed can be inaccurate as that are computed assuming normal distribution
+- The time plot of the residuals shows that the variation of the residuals stays approximately the same across the historical data, apart from some outliers
+- There is some auto-correlation in the residual series, like a large spike is seen at lag 4. In such situation, it is always recommended to check autocorrelation by performing Portmanteau test
+- Let’s test whether the first l=24 autocorrelations
+    - Applying Portmanteau tests for autocorrelations: ljung_box
+    - null hypothesis: Autocorrelation = 0
+    - Alternate hypothesis : Autocorrelation!= 0 
+    - SO, if p-value is large (>0.05), we fail to reject null hypothesis and say that                 autocorrelations are zero 
+    - If p-value is small, we reject null hypothesis, and say that autocorrelation are not zero
+    
+```{r}
+Box.test(augment(fit)$.resid, lag=24, fitdf = 0, type = "Lj")
+```
+
+Here, we found that p value is 9.936e-05 which is <0.05, so we reject null hypothesis and say that auto-correlation is not zero and so there is some auto-correlation in the residuals. Which means that they are not like white noise as white noise is uncorrelated, has mean zero and has constant variance. And our residuals shows that there is auto-correlation in them and there distribution is slightly skewed.
+
+
+>>Q6. Are the following statements true or false? Explain your answer.
+
+#a. Good forecast methods should have normally distributed residuals.
+
+This statement is false. Good forecast methods do give normally distributed residuals but it is not a requirement. It is good to have but not a must to have requirement. It is helpful to have normally distributed residuals because it makes the calculation of prediction intervals easier, and it means that least squares estimates of parameters are also equivalent (or close to)
+maximum likelihood estimates. But it doesn’t make the forecasts better. If the residuals are not normally distributed, one way to produce prediction intervals is to use a bootstrapped approach. So, there are many other forecasting methods that use different distributions and there are many ways to tackle non-normal residuals to produce good forecast from our model.
+
+#b. A model with small residuals will give good forecasts.
+
+This statement is false. If we overfit the data then the model will have small residuals but that will increase the complexity of the model. The more flexible model is not good interpretable. So highly complex model will perform bad in forecasting new dataset as it was build closely following the noise.
+
+#c. The best measure of forecast accuracy is MAPE.
+
+This statement is false. MAPE has several disadvantages associated with it like:
+
+- It cannot be used if there are zero values (which sometimes happens for example in demand data) because there would be a division by zero
+- For forecasts which are too low the percentage error cannot exceed 100%, but for forecasts which are too high there is no upper limit to the percentage error
+- MAPE puts a heavier penalty on negative errors,than on positive errors 
+- Overall, there is not just one best measure of accuracy, infact if we have combination of measures which can then give insight of residuals differently
+
+#d. If your model doesn’t forecast well, you should make it more complicated.
+
+This statement is false. A highly complex model will not necessarily make forecast good. In fact a complex flexible model will overfit the data and will closely follow the noise thereby making the model worse. Additionally, the more the predictors we take into account, the residual is always going to come down but that will force us to include the factors which are not even affecting our forecast. And thus they will make model worse instead of improving forecast.
+
+#e. Always choose the model with the best forecast accuracy as measured on the test set.
+
+The statement is false. Although it is true that in comparison to “training data” we should take the model which is performing best on test data set. The accuracy of forecasts can only be determined by considering how well a model performs on new data that were not used when fitting the model. But the statement that always choose the model with best forecast accuracy as measured on the test set is false. As our aim should be to choose a model which is apt for forecasting tasks. In certain cases cross validation accuracy can be more useful. In this case, the forecast accuracy is computed by averaging over the various test sets. This procedure is sometimes known as “evaluation on a rolling forecasting origin” because the “origin” at which the forecast is based rolls forward in time.
+
+>>Q7. For your retail time series (from Exercise 8 in Section 2.10):
+
+#recalling the retail time series from exercise 8 in Sec 2.10:
+
+```{r}
+set.seed(12345678)
+myseries <- aus_retail %>%
+  filter(`Series ID` == sample(aus_retail$`Series ID`, 1))
+autoplot(myseries,.vars=Turnover)
+```
+
+#Now creating  a training dataset consisting of observations before 2011 using the code given in question
+```{r}
+myseries_train <- myseries %>%
+  filter(year(Month) < 2011)
+
+myseries_train
+```
+
+#Now , checking that  data have been split appropriately by producing the following plot with code given in the question
+```{r}
+autoplot(myseries, Turnover) +
+  autolayer(myseries_train, Turnover, colour = "red")
+```
+
+#Now, fitting a seasonal naïve model using SNAIVE() applied to the training data, with the code given
+
+```{r}
+fit1 <- myseries_train %>%
+  model(SNAIVE(Turnover))
+
+```
+
+#Checking the residuals
+
+```{r}
+fit1 %>% gg_tsresiduals()
+```
+
+#Do the residuals appear to be uncorrelated and normally distributed?
+
+Observations
+
+- By looking at distribution of the residuals, it looks like left-skewed as left tail seems to be longer even if we do not consider outliers
+- There is also not a constant variance seen in the time plot of residuals
+- The ACF plot shows high auto-correlation. To cross check what we see from ACF plot, lets perform Portmanteau test
+- Let’s test whether the first l=24 autocorrelations
+- Applying Portmanteau tests for autocorrelations: ljung_box
+    - null hypothesis: Autocorrelation = 0
+    - Alternate hypothesis : Autocorrelation!= 0
+    - So, if p-value is large (>0.05), we fail to reject null hypothesis and say that                 autocorrelations are zero
+    - If p-value is small, we reject null hypothesis, and say that autocorrelation are not zero
+
+```{r}
+Box.test(augment(fit1)$.resid, lag=24, fitdf = 0, type = "Lj")
+```
+
+
+Here , p value is 2.2e-16, which is <0.05, so we reject null hypothesis and can say that the auto-correlation in residuals is not zero. So, there exist auto-correlation in the residual and they are different from white noise and hence, residuals do appear auto-correlated. This test supports what we see from ACF plot.
+
+#Produceing the forecasts for the test data with code given 
+
+```{r}
+fc <- fit1 %>%
+  forecast(new_data = anti_join(myseries, myseries_train))
+fc %>% autoplot(myseries)
+```
+
+#Comparing the accuracy of your forecasts against the actual values using code in the question
+
+```{r}
+#training set accuracy
+fit1 %>% accuracy()
+
+#test set accuracy
+fc %>% accuracy(myseries)
+
+```
+
+- If we look at RMSE of both the training and test data set, we can say that RMSE of training set is less than that of test data set. This will be true because training data is used to create a model
+- The number to look at here is the test set RMSE of 1.55. That provides a benchmark for comparison when we try other models
+
+#How sensitive are the accuracy measures to the amount of training data used?
+
+- The accuracy measure are always sensitive to the split of training and testing data. There are better ways to check the robustness of the methods in terms of accuracy such as using a rolling window 
+- Earlier, we had taken training data for year<2011 , now let's increase the amount of training data and see if there are any effects
+
+```{r}
+#filter training data
+myseries_train2 <- myseries %>%
+  filter(year(Month) < 2018)
+
+#fitting model
+fit2 <- myseries_train2 %>%
+  model(SNAIVE(Turnover))
+
+#forecasting
+fc1 <- fit2 %>%   
+  forecast(new_data = anti_join(myseries, myseries_train2))
+
+fc1 %>% autoplot(myseries)
+
+#training set accuracy
+fit2 %>% accuracy()
+
+#test set accuracy
+fc1 %>% accuracy(myseries)
+```
+
+
+- So, just by increasing the amount of training data, we can see that test RMSE is further reduced and is now 0.974. So, we can say that accuracy measures are sensitive to the amount of training data used
+- Theoretically too, accuracy measures are sensitive to the sample size as well as the amount of the split between training and test data. If we provide too much of the same type of data, we risk over-training our model. Whereas, if we provide too small of a sample or not diverse enough a set of data, we risk under-training our model. Thus, this is a case where the most accurate model is one that finds the balance point between over and under fitting the model
+- We also know that the most recent data gives better forecast, so if we take training and test data of most recent years we might get better forecast
+
+
+>>Q10.
+a. Create a training set for Australian takeaway food turnover (aus_retail) by withholding the last four years as a test set.
+
+
+Looking aus_retail data set
+```{r}
+aus_retail
+```
+
+To find takeaway food turnover, we need to look into Industry which has Takeaway in it. So, filtering the data with Industry which has a keyword "Takeaway" using grepl
+
+```{r}
+aus_takeaway <- filter(aus_retail,grepl("Takeaway",Industry))
+aus_takeaway
+```
+
+```{r}
+aus_takeaway %>%
+  autoplot(Turnover)
+```
+
+Since, there are different states which has this Industry, so summarizing sum total of turnover for our analysis
+
+```{r}
+aus_takeaway1 <- aus_takeaway %>%
+  summarise(Turnover = sum(Turnover))
+
+tail(aus_takeaway1)
+
+aus_takeaway1 %>% autoplot(Turnover)
+```
+
+
+#creating a training set for Australian takeaway food turnover (aus_retail) by withholding the last four years as a test set.
+
+We have data till 2018, so witholding last 4 years as test set and rest as training
+
+```{r}
+aus_takeway_train <- 
+  aus_takeaway1 %>% 
+  filter(year(Month) <= 2014) #with hold last 4 years
+
+aus_takeway_train %>% autoplot(Turnover)
+
+```
+
+
+#Fitting all the appropriate benchmark methods to the training set and forecast the periods covered by the test set.
+
+```{r}
+aus_takeaway_fit <- aus_takeway_train %>%
+  model(
+    Mean = MEAN(Turnover),
+    `Naive` = NAIVE(Turnover),
+    `Seasonal Naive` = SNAIVE(Turnover),
+    Drift = RW(Turnover ~ drift() )
+  )
+aus_takeaway_fc <- aus_takeaway_fit %>%
+  forecast(h = "4 years")
+
+aus_takeaway_fc %>%
+autoplot(aus_takeway_train, level = NULL) +
+ggtitle("Forecasts for monthly turnover of Takeaway food industry") +
+guides(colour=guide_legend(title="Forecast"))
+```
+
+Visually, it looks like seasonal naive is closely following the actual pattern
+
+#Computing the accuracy of our forecasts and checking method does best?
+
+```{r}
+aus_takeaway_fc %>%
+  accuracy(aus_takeaway1)
+```
+
+Although, looking at the accuracy metrics, we can see test data RMSE is lowest for Naive method. So, Naive method does the best in this sense.
+
+#Do the residuals from the best method resemble white noise?
+
+```{r}
+best_model <- aus_takeaway_fit %>%
+  select(`Naive`)
+
+best_model%>% gg_tsresiduals()
+```
+
+Observations
+
+- The time plot of the residuals shows that the variation of the residuals increases with time. The innovation residuals do not have constant variance. This is known as “hetroscedasticity”. So, the forecasts from this method might be quite good, but prediction intervals that are computed assuming constant variance of residual may be inaccurate
+- The histogram shows that residuals are almost normally distributed, centered around 0
+- ACF plot suggest auto-correlation in the residuals which can be tested with Box-pierce test 
+- Hence, it looks like the residuals do not resemble white noise as here residuals do not have constant variance and seems to have auto-correlation
+
+Let's confirm auto-correlation with Box-pierce test:
+
+```{r}
+Box.test(augment(best_model)$.resid, lag=24, fitdf = 0, type = "Lj")
+```
+
+So, the p-value is 2.2e-16 which is <0.05 and hence we reject null hypothesis(that auto-correlation in residual is zero) and can say that there exist strong auto-correlation in the residuals. Hence, proving that residuals from this model are far from white noise.
+
+Also, a forecasting method that does not satisfy the properties of homoscedasticity and innovation residuals are to normally distributed, cannot necessarily be improved. Sometimes applying a Box-Cox transformation may assist with these properties. Like the series we have in question, we can try to apply box-cox transformation on it and can check how it impacts residuals
+
+
+#applying box-cox transformation to training data and forecast it and check residuals to see if there is any impact
+
+
+```{r}
+lambda <- aus_takeway_train %>%
+  features(Turnover, features = guerrero) %>%
+  pull(lambda_guerrero)
+
+aus_takeway_train %>%
+  autoplot(box_cox(Turnover, lambda)) +
+  labs(y = "",
+       title = latex2exp::TeX(paste0(
+         "Transformed takeaway food industry training data with $\\lambda$ = ",
+         round(lambda,2))))
+
+
+aus_takeaway_fit1 <- aus_takeway_train %>% 
+  model(
+     Mean = MEAN(box_cox(Turnover,lambda = lambda)),
+    `Naive` = NAIVE(box_cox(Turnover,lambda = lambda)),
+    `Seasonal Naive` = SNAIVE(box_cox(Turnover,lambda = lambda)),
+    Drift = RW(box_cox(Turnover,lambda = lambda) ~ drift() )
+    )
+
+
+aus_takeaway_fc1 <- aus_takeaway_fit1 %>% 
+  forecast(new_data = anti_join(aus_takeaway1, aus_takeway_train))
+
+aus_takeaway_fc1 %>%
+  accuracy(aus_takeaway1)
+
+best_model1 <- aus_takeaway_fit1 %>%
+  select(`Naive`)
+
+best_model1 %>% gg_tsresiduals()
+
+Box.test(augment(best_model1)$.resid, lag=24, fitdf = 0, type = "Lj")
+```
+
+
+So, it can be seen that with transformed series the variance is now somewhat constant in residuals and is better than before but there still exist auto-correlation which was not supposed to be tackled by box-cox transformation. So, still residuals do not resemble white noise as all the conditions are not met.
