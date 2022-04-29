@@ -1,0 +1,1057 @@
+---
+title: "HW_ARIMA_Kratika"
+author: "Kratika Sharma"
+date: "4/23/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidyr)
+library(fpp3)
+library(stargazer)
+library(tsibble)
+library(latex2exp)
+library(magrittr)
+library(stringr)
+library(seasonal)
+library(ggplot2)
+library(ggfortify)
+```
+
+>> Q6. Simulate and plot some data from simple ARIMA models.
+
+#Use the following R code to generate data from an AR(1) model with ϕ1=0.6 and σ2=1. The process starts with y1=0.
+
+Using the code given in the question, we are generating data from AR(1) model using the autoregressive model of order 1 :
+  yt = ϕ1y(t-1)+et
+  
+```{r}
+y <- numeric(100)
+e <- rnorm(100)
+for(i in 2:100)
+  y[i] <- 0.6*y[i-1] + e[i]
+sim <- tsibble(idx = seq_len(100), y = y, index = idx)
+sim
+```
+
+#Produce a time plot for the series. How does the plot change as you change ϕ1?
+
+Plotting the time series with ϕ1 = 0.6 as calculated above
+```{r}
+sim %>% autoplot(y)
+```
+
+
+To see how the plot changes with different values of ϕ1, let's first create a function which will return y for different values of ϕ
+```{r}
+ar.1 <- function(phi, sd=1, n=100){
+  y <- ts(numeric(n))
+  e <- rnorm(n, sd=sd)
+  for(i in 2:n)
+    y[i] <- phi*y[i-1] + e[i]
+  return(y)
+}
+```
+
+Now passing different values of phi and calling the above ar.1 function and checking how different phi values will change time series:
+
+```{r}
+datalist1 <- list()
+i <- 0
+phi.vec <- c(0.0000006, 0.0006, 0.6,0.9,0.01,0,-0.5)
+for (phi in phi.vec){
+  i <- i + 1
+  datalist1[[i]] <- ar.1(phi)
+}
+data1 <- do.call(cbind, datalist1)
+colnames(data1) <- paste('phi=', phi.vec, sep = '')
+autoplot(data1) + ylab('Data')
+```
+
+For AR(1) model, generally the constraint is : -1<phi<1 and phi controls the shape of the graph
+
+From above, we can see following
+
+- The data generated using AR(1) with various magnitude of phi is plotted above
+- It can be seen that for small values of phi, the data looks more random 
+- For phi near to 0, it does look like white noise
+- For large phi that are neat to 1, it does not look random or like white noise, it is more like random walk
+- For negative phi, the graph is oscillating a lot between negative and positive values. It is oscillating more than any other postive phi value
+
+Let's check their ACF plots as well:
+
+```{r}
+par(mfrow=c(1,4))
+acf(data1[,1], main='Phi=0.0000006')
+acf(data1[,2], main='Phi=0.0006')
+acf(data1[,3], main='Phi=0.6')
+acf(data1[,7], main='Phi=-0.5')
+```
+
+- Visually, it can be seen that for higher value of phi, the autocorrelation is high and it is decaying exponentially slowly. But for smaller phi, there is less autocorrelation. The perfect phi seems to be 0.0000006 here by looking at the plot visually
+- Especially, if we see from lag 1 to lag 5, we can see high autocorrelation visually when phi is large which means that the current value is correlated to the previous data While at low phi, we can see that there is no autocorrelation from lag 1, which means that current value is less dependent on previous data
+
+#Write your own code to generate data from an MA(1) model with θ1=0.6 and σ2=1.
+
+Like above we did for AR model, let's do similar for MA model
+
+For thetha = 0.6, MA(1) model: 
+```{r}
+y <- numeric(100)
+e <- rnorm(100)
+for(i in 2:100)
+  y[i] <- 0.6*e[i-1] + e[i]
+sim1 <- tsibble(idx = seq_len(100), y = y, index = idx)
+
+sim1 %>% autoplot(y)
+```
+
+#Produce a time plot for the series. How does the plot change as you change θ1?
+
+Now similar to above, let's write consolidate function to check upon changing values of thetha how the plot changes:
+
+```{r}
+#writing function to generate data from MA(1) by taking different values of thetha
+ma1 <- function(theta, sd=1, n=100){
+  y <- ts(numeric(n))
+  e <- rnorm(n, sd=sd)
+  e[1] <- 0
+  for(i in 2:n)
+    y[i] <- theta*e[i-1] + e[i]
+  return(y)
+}
+
+#passing different values of thetha in a form of a vector
+datalist2 <- list()
+i <- 0
+theta.vec <- c(0.0000001, 0.000001,0.0001,0.001, 0.1) * 6
+for (theta in theta.vec){
+  i <- i + 1
+  datalist2[[i]] <- ma1(theta)
+}
+data2 <- do.call(cbind, datalist2)
+colnames(data2) <- paste('theta=', theta.vec, sep = '')
+autoplot(data2) + ylab('Data')
+```
+
+- Like we observed in AR(1) model, here also it can be seen that at smaller values of thetha, data looks more random and like white noise
+- Let's check acf for different thetha's
+
+```{r}
+par(mfrow=c(1,3))
+acf(data2[,1], main='theta=0.0000006')
+acf(data2[,3], main='theta=0.0006')
+acf(data2[,5], main='theta=0.6')
+```
+
+Similar to AR model it is seen that in MA(1) model, the smaller values of thetha shows less autocorrelation between errors in consecutive observations. Which implies that the new data point is less dependent on the error in previous data point.
+
+#Generate data from an ARMA(1,1) model with ϕ1=0.6, θ1=0.6 and σ2=1
+
+```{r}
+y1 <- ts(numeric(100))
+e <- rnorm(100, sd=1)
+for(i in 2:100)
+  y1[i] <- 0.6*y1[i-1] + 0.6*e[i-1] + e[i]
+autoplot(y1) +
+  ggtitle('ARMA(1,1) Generated Data')
+```
+
+#Generate data from an AR(2) model with  ϕ1=−0.8 ,  ϕ2=0.3 and  σ2=1. (Note that these parameters will give a non-stationary series.)
+
+```{r}
+y2 <- ts(numeric(100))
+e <- rnorm(100, sd=1)
+for(i in 3:100)
+  y2[i] <- -0.8*y2[i-1] + 0.3*y2[i-2] + e[i]
+autoplot(y2) +
+  ggtitle('AR(2) Generated Data')
+```
+
+This series does look like non-stationary series. There is non-constant variance seen in the plot and a lot of oscillation between negative and positive values in it. 
+
+#Graph the latter two series and compare them.
+
+- It is clear from above graphs that the AR(2) has generated a non-stationary time series. It has an oscillating pattern, which is increasing in amplitude over time. It has some seasonality in later part of series
+- ARMA(1,1) looks to have generated more random series. Visually, we cannot see any trend or seasonality
+- let's check there acf plots
+
+
+```{r}
+par(mfrow=c(1,2))
+acf(y1, main='ARMA(1,1) Generated Data')
+acf(y2, main='AR(2) Generated Data')
+```
+
+- ACF plot does showcase that AR(2) has more autocorrelations, while for ARMA(1,1) autocorrelation decays exponentially and relatively quickly than the other
+
+
+>> Q9. Consider aus_arrivals, the quarterly number of international visitors to Australia from several countries for the period 1981 Q1 – 2012 Q3.
+
+#Select one country and describe the time plot.
+
+```{r}
+aus_arrivals 
+```
+
+Finding distinct origin in the data
+
+```{r}
+a <- aus_arrivals %>% distinct(Origin)
+a
+```
+
+Out of the above countries, let's pick UK and analyze its time plot:
+
+```{r}
+aus_arrivals %>%
+  filter(Origin == "UK") %>%
+  autoplot(Arrivals)+ggtitle("Autoplot: Arrival volume from UK")
+
+aus_arrivals %>%
+  filter(Origin == "UK") %>%
+  gg_season(Arrivals)+ggtitle("Seasonal Plot: Arrival volume from UK")
+```
+
+- This is a quarterly time series with an upward trend with slight downward trend after 2005
+- A strong seasonality seen in it. The seasonal plot shows that every year, there is spike in tourist from UK in Q1 and Q4, and less tourists in Q2 and Q3. This trend follows every year
+
+#Use differencing to obtain stationary data.
+
+Since the above time series is non-stationary due to the presence of trend and seasonality in it. One way to obtain stationary data is to difference the time series. We can check if data needs differencing by running KPSS test to confirm our findings and check which order differencing is needed. 
+
+```{r}
+aus_arrivals_UK <- aus_arrivals %>%
+  filter(Origin == "UK")
+
+aus_arrivals_UK
+```
+
+First, before checking for differencing, let's stabalize the variance in time series as there is non-constant variance visible visually. 
+```{r}
+aus_arrivals_UK %>% autoplot(log(Arrivals))
+```
+Log transformed series looks better than normal series. We could have checked box-cox transformation as well but log transformation looks fine, so moving ahead with it. 
+
+
+```{r}
+#running KPSS test to check if differencing is needed
+aus_arrivals_UK %>% features(log(Arrivals), unitroot_kpss)
+
+#automatically selecting order of differencing
+aus_arrivals_UK %>% features(log(Arrivals), list(unitroot_nsdiffs, feat_stl))
+
+```
+
+For KPSS test , null Hypothesis Ho: Series is stationary and alternate hypothesis Halt: series is non stationary
+
+- Above we can see that p value returned from unitroot_kpss is 0.01 <0.05, so we reject null hypothesis and say series is non-stationary and need differencing
+- ndiffs indicate that series needs first differencing 
+- Also from above we can see that Fs >0.65, so one seasonal difference is suggested
+
+```{r}
+aus_arrivals_UK %>% features(log(Arrivals), unitroot_nsdiffs)
+
+aus_arrivals_UK %>% mutate(s_arrivals = difference(log(Arrivals),4)) %>%
+  features(s_arrivals, unitroot_ndiffs)
+```
+
+So, the test suggest one seasonal differencing and one normal differencing. Let's try to run ljung box test on double differenced data and see if it is not looking stationary or not. Will see ACF and PACF plot afterwards to confirm if now series is stationary or not.  
+
+```{r}
+aus_arrivals_UK %>% mutate(diff_Arrivals = difference(difference(log(Arrivals), 4),1)) %>%
+  features(diff_Arrivals, ljung_box, lag = 24)
+```
+
+The above test gives p value<0.05, so we reject null hypothesis and say there is still autocorrelation.
+
+But, let's go with the results we saw in "automatically selecting differences" which kind of suggests that we need first order differencing and seasonal differencing
+
+
+```{r}
+#Plotting double differenced time series
+aus_arrivals_UK %>% 
+  mutate(diff_Arrivals1 = difference(difference(log(Arrivals), 4),1))%>%
+           autoplot(diff_Arrivals1)
+```
+
+#What can you learn from the ACF graph of the differenced data?
+#What can you learn from the PACF graph of the differenced data?
+#What model do these graphs suggest?
+
+```{r}
+#residual analysis
+aus_arrivals_UK %>% 
+  mutate(diff_Arrivals = difference(difference(log(Arrivals), 4),1))%>%
+           gg_tsdisplay(diff_Arrivals, plot_type = "partial")
+```
+
+
+ACF plot
+
+- We can see a negative spike at lag 4, which is a seasonal spike. No seasonal spike is seen after that till lag 20
+- Two spikes are seen at lag 1 and lag 5, which are non-seasonal spikes
+- ACF plot relatively shows no autocorrelation except at the lags mentioned above
+
+PACF plot
+
+- We can see negative spike at lag 4, and a bit partial autocorrelation at lag 8 as well. These are seasonal spikes. Further these seasonal spike seems to be decaying exponentially over time
+- A large spike is seen at lag 1 and a little spike at lag 2, these are non-seasonal spikes. These are also seems to be decaying over time
+
+
+So, these are double-differenced data which we are seeing. If we will try to fit ARIMA model, it will be seasonal ARIMA model ARIMA(pdq)(PDQ)4
+
+Since autocorrelation at seasonal period is negative, in our initial model, we will add SMA component. Later we will also analyze other possible models as well. 
+
+Initial candidate model, model 1
+
+Model 1:
+
+- The significant spike at lag 1 in ACF suggests a non-seasonal MA(1) component 
+- The significant spike at lag 4 in ACF suggest seasonal MA(1) component
+- Consequently, we begin with an ARIMA(0,1,1)(0,1,1)4 model, indicating a first difference, a seasonal difference, and non-seasonal MA(1) and seasonal MA(1) component
+- So, Model 1 : ARIMA(0,1,1)(0,1,1)4 
+
+We can consider other models as well and then compare them to find the best model
+
+Model 2
+
+- We could have also started by looking at PACF
+- If we use PACF to select non-seasonal part of the model, we see spike at lag 1, which suggest AR(1) non-seasonal component
+- The significant spike at lag 4 in pacf, suggest seasonal AR(1) component
+- Model 2: ARIMA(1,1,0)(1,1,0)4
+
+Similarly, we can check ARIMA(1,1,0)(0,1,1)
+- If we use PACF to select non-seasonal part of the model, we see spike at lag 1, which suggest AR(1) non-seasonal component
+- The significant spike at lag 4 acf, suggest seasonal MA(1) component
+- Model 3: ARIMA(1,1,0)(0,1,1)4
+
+
+- If we use ACF to select non-seasonal part of the model, we see last significant spike at lag 5, which suggest MA(5) non-seasonal component
+- The significant spike at lag 4 pacf, suggest seasonal AR(1) component
+- Model 4: ARIMA(0,1,5)(1,1,0)4
+
+Similarly, 
+Model 5: ARIMA(2,1,0)(0,1,1)4
+Model 6: ARIMA(0,1,5)(0,1,1)4
+
+Comparing all the models and auto model too and finding the one with lowest AICc
+
+```{r}
+fit <- aus_arrivals_UK %>%
+  model(
+    arima011011 = ARIMA(log(Arrivals) ~ pdq(0,1,1) + PDQ(0,1,1)),
+    arima110110 = ARIMA(log(Arrivals) ~ pdq(1,1,0) + PDQ(1,1,0)),
+    arima110011 = ARIMA(log(Arrivals) ~ pdq(1,1,0) + PDQ(0,1,1)),
+    arima015210 = ARIMA(log(Arrivals) ~ pdq(0,1,5) + PDQ(1,1,0)),
+    arima210011 = ARIMA(log(Arrivals) ~ pdq(2,1,0) + PDQ(0,1,1)),
+    arima015011 = ARIMA(log(Arrivals) ~ pdq(2,1,0) + PDQ(0,1,1)),
+    auto = ARIMA(log(Arrivals), stepwise = FALSE, approx = FALSE)
+  )
+
+glance(fit) %>% arrange(AICc)
+```
+  
+
+The model with lowest AICc is ARIMA(0,1,1)(0,1,1)4
+
+Lets check the residuals of the best model
+
+```{r}
+fit %>% select(arima011011) %>% gg_tsresiduals(lag=36)
+```
+
+
+- Constant variance is seen which was actually achieved by using log transformations in the model
+- Residual histogram looks almost normal, centered around zero
+- ACF plot suggest no auto-correlation in the residuals which can be tested with Box-pierce test
+
+Let’s confirm auto-correlation with Box-pierce test:
+
+```{r}
+augment(fit) %>%
+  filter(.model == "arima011011") %>%
+  features(.innov, ljung_box, lag=24, dof=2)
+```
+
+The large p-value confirms that the residuals are similar to white noise.
+
+
+```{r}
+#looking at best model parameter
+report(fit %>% select(arima011011))
+```
+
+#Forecasting using that model:
+
+```{r}
+forecast(fit, h="3 years") %>%
+  filter(.model=='arima011011') %>%
+  autoplot(aus_arrivals_UK)
+```
+
+
+>>Q10. Choose a series from us_employment, the total employment in different industries in the United States.
+
+```{r}
+us_employment %>% distinct(Title)
+```
+
+Selecting "Retail Trade" from the data: 
+
+```{r}
+retail <- us_employment %>% filter(Title == "Retail Trade")
+
+retail %>% autoplot(Employed)
+```
+
+This series has an upward trend with strong seasonality in it.
+
+#Produce an STL decomposition of the data and describe the trend and seasonality.
+
+```{r}
+retail %>%
+  model(
+    STL(Employed)) %>%
+  components() %>%
+  autoplot()+
+  labs(title = "STL decomposition of Employed in Retail Trade")
+```
+
+Observations from above
+
+- The trend component is able to capture the increasing trend in the data
+- The remainder component is around zero but certain spikes are seen during 1990s in it. The remainder seem to increase over time as well
+- The season_year component is seen to be less and same till sometime before 1950 and then it starts changing and increasing and then decreasing and with changing seasonality too as the shape of the graph in changing
+
+Let's check if the seasonal shape change over time in STL decomposition
+
+As seen from above graph too(season_year), the seasonality component is changing with time
+
+```{r}
+dcmp1 <- retail %>%
+  model(stl = STL(Employed))
+
+components(dcmp1) %>%
+  as_tsibble() %>%
+  gg_season(season_year)
+```
+
+The above seasonal plot also suggest that seasonality is changing over time. Every year is seeing almost similar patterns from November to Feb. But different years see different peaks and troughs. Different peaks and troughs every month is seen from somewhere after 1980s. 
+
+#Do the data need transforming? If so, find a suitable transformation.
+
+- As per mathematical transformation, if the data shows variation that increases or decreases with the level of the series, then a transformation can be useful
+- Taking a close look at autoplot of Employed in Retail Trade from us_economy, we see that there is little  variation at different level of series. So ideally, a strong transformation is not needed here but some transformation is needed
+- Let's look at log transformation below 
+
+```{r}
+#log transformed plot 
+retail %>%
+  autoplot(log(Employed))+ggtitle("Logarithmic Plot of Employed in Retail Trade")
+```
+
+```{r}
+#Box-Cox transformation
+lambda <- retail %>%
+  features(Employed, features = guerrero) %>%
+  pull(lambda_guerrero)
+
+retail %>%
+  autoplot(box_cox(Employed, lambda)) +
+  labs(y = "", title = TeX(paste0("Transformed Retail Trade employed with $\\lambda$ = ",
+         round(lambda,2))))
+```
+
+Findings from above graphs
+
+- In log transformation, we looked at the logarithmic transformation of the series. And our conclusion above was affirmed here looking at this plot as there was not much change seen observed in the series, just the scale of measurement was changed
+- A useful family of transformations, that includes both logarithms and power transformations, is the family of Box-Cox transformations (Box & Cox, 1964), which depend on the parameter
+λ
+- We checked the Box-Cox transformation too and again the series does not seem to change much. - Also, since lambda is close to 1 so there won’t be much change in the shape of the time series
+
+#c. Are the data stationary? If not, find an appropriate differencing which yields stationary data
+
+The data is not stationary because it has a trend and seasonality in it. The ACF plot is also useful for identifying non-stationary time series. For a stationary time series, the ACF will drop to zero relatively quickly, while the ACF of non-stationary data decreases slowly. The below ACF plot also suggest non-stationary time series as it is not dropping to zero quickly and has postive and large r1.
+
+```{r}
+retail %>% ACF(Employed) %>% autoplot()
+```
+
+Running KPSS to statistically justify that data is stationary or not and find order of the differincing
+- Null hypothesis (Ho): Data is stationary
+- Alternate hypothesis (Halt): Data is non-stationary
+
+```{r}
+retail %>% features(log(Employed), unitroot_kpss)
+```
+
+So, p-value <0.05, so we reject null hypothesis and say data is non-stationary. 
+
+```{r}
+#no. of seasonal difference
+retail %>% mutate(log_employed = log(Employed)) %>%
+  features(log_employed, unitroot_nsdiffs)
+
+#no. of regular difference
+retail %>% mutate(d_log_employed = difference(log(Employed),12)) %>%
+  features(d_log_employed, unitroot_ndiffs)
+```
+
+
+From above test, it is confirmed that we need one seasonal difference and one regular difference to make this time series stationary.
+
+Plotting the double differenced time series: 
+
+```{r}
+retail %>% 
+  autoplot(log(Employed) %>% difference(lag=12) %>% difference())
+```
+
+The data now looks stationary as no trend or seasonality is seen now. But the variance is changing over time. There is no constant variance in the data. We know that transforming the data helps to stabilize variance. We did use log transformed series but let's also look below a double differenced data of box-cox transformed series. And it looks comparatively better than log transformation, in terms of variance as it has comparatively constant variance. And so is close to stationary time series requirements.
+
+
+```{r}
+retail %>%
+  autoplot(box_cox(Employed, lambda)%>% difference(lag=12) %>% difference())
+```
+
+Now, lets confirm statistically by KPSS test that double differenced time series is stationary or not. 
+
+```{r}
+#KPSS on log transformed double differenced time series
+retail %>% mutate(d_log_employed = difference(difference(log(Employed),12),1)) %>%
+  features(d_log_employed, unitroot_kpss)
+
+#KPSS on box-cox transformed double differenced time series
+retail %>% mutate(d_log_employed = difference(difference(box_cox(Employed, lambda),12),1)) %>%
+  features(d_log_employed, unitroot_kpss)
+```
+
+Now in both the cases (log transformed or box-cox transformed), the p value from above test is >0.05 and so we cannot reject null hypothesis and say that this data is now stationary.
+
+#Identify a couple of ARIMA models that might be useful in describing the time series. Which of your models is the best according to their AICc values?
+
+Let's look at below ACF and PACF plots to find some ARIMA models which might be useful in describing the time series.
+* as given we will use log transformation only for convinience
+
+```{r}
+retail %>%
+  gg_tsdisplay(log(Employed) %>% difference(lag=12) %>% difference(), plot_type="partial")
+```
+
+ACF plot
+
+- We can see a negative spike at lag 12, which is a seasonal spike. No seasonal spike is seen after that 
+- Several spikes are seen at lag 1, lag 2,lag 11,etc.  which are non-seasonal spikes, with lag 2 spike of highest magnitude
+
+PACF plot
+
+- We can see spike at lag 12, and a bit partial autocorrelation at lag 24 as well. These are seasonal spikes. Further these seasonal spike seems to be decaying exponentially over time
+- A large spike is seen at lag 1 and lag 2 and  little spikes at other lag values, these are non-seasonal spikes. These are also seems to be decaying over time with largest significant spike seen at lag 1 and lag 2
+
+So, these are double-differenced data which we are seeing. If we will try to fit ARIMA model, it will be seasonal ARIMA model ARIMA(pdq)(PDQ)12
+
+Initial candidate model, model 1
+
+Model 1:
+
+- The significant spike at lag 2 in ACF suggests a non-seasonal MA(2) component 
+- The significant spike at lag 12 in ACF suggest seasonal MA(1) component
+- Consequently, we begin with an ARIMA(0,1,2)(0,1,1)12 model, indicating a first difference, a seasonal difference, and non-seasonal MA(2) and seasonal MA(1) component
+- So, Model 1 : ARIMA(0,1,2)(0,1,1)12
+
+We can consider other models as well and then compare them to find the best model
+
+Model 2
+
+- We could have also started by looking at PACF
+- If we use PACF to select non-seasonal part of the model, we see spike at lag 2, which suggest AR(2) non-seasonal component
+- The significant spike at lag 12 in pacf, suggest seasonal AR(1) component
+- Model 2: ARIMA(2,1,0)(1,1,0)12
+
+Similarly, we can check ARIMA(1,1,0)(0,1,1)
+- If we use PACF to select non-seasonal part of the model, we see spike at lag 2, which suggest AR(2) non-seasonal component
+- The significant spike at lag 12 acf, suggest seasonal MA(1) component
+- Model 3: ARIMA(2,1,0)(0,1,1)12
+
+- If we use ACF to select non-seasonal part of the model, we see significant spike at lag 2, which suggest MA(2) non-seasonal component
+- The significant spike at lag 12 pacf, suggest seasonal AR(1) component
+- Model 4: ARIMA(0,1,2)(1,1,0)12
+
+
+- If we use ACF to select non-seasonal part of the model, we see significant spike at lag 2, which suggest MA(2) non-seasonal component
+- The last significant spike at lag 24 in pacf, suggest seasonal AR(2) component
+- Model 5: ARIMA(0,1,2)(2,1,0)12
+
+```{r}
+fit1 <- retail %>%
+  model(
+    arima012011 = ARIMA(log(Employed) ~ pdq(0,1,2) + PDQ(0,1,1)),
+    arima210110 = ARIMA(log(Employed) ~ pdq(2,1,0) + PDQ(1,1,0)),
+    arima210011 = ARIMA(log(Employed) ~ pdq(2,1,0) + PDQ(0,1,1)),
+    arima012110 = ARIMA(log(Employed) ~ pdq(0,1,2) + PDQ(1,1,0)),
+    arima012210 = ARIMA(log(Employed) ~ pdq(0,1,2) + PDQ(2,1,0)),
+   
+    auto = ARIMA(log(Employed), stepwise = FALSE, approx = FALSE)
+  )
+
+glance(fit1) %>% arrange(AICc)
+```
+
+So, looking at above AICc values, out of all the models that we guessed, our initial model ARIMA(0,1,2)(0,1,1) performed the best with lowest AICc and closest AICc value to the Auto model which R suggested.
+
+#Estimate the parameters of your best model and do diagnostic testing on the residuals. Do the residuals resemble white noise? If not, try to find another ARIMA model which fits better.
+
+#parameters and residual test of the best model out of the model I guessed
+
+```{r}
+#parameter of the best model suggested
+fit1 %>% select(arima012011) %>% report()
+
+#looking at residuals
+fit1 %>%
+  select(arima012011) %>%
+  gg_tsresiduals()
+
+#Doing Ljung box test on residuals
+augment(fit1) %>%
+  filter(.model == "arima012011") %>%
+  features(.resid, ljung_box, lag=24, dof=3)
+```
+
+Looking above at residual plot
+
+- we can see that the histogram is nearly normal and centered around zero
+- The variance is not constant and is decreasing with time
+- We see some spikes in ACF plot which suggest us of some auto-correlation. We performed Box- pierce test and we can see p-value<0.05 which suggest us to reject null hypothesis and there exist some auto correlation in residuals and so they do not look like white noise
+
+Since, residuals from our model does not look like white noise, so, let's pick the model which R suggested as that seems to be the best model of all the models due to lowest AICc value.
+
+
+```{r}
+#parameter of the best model of all models - auto
+best_model <- fit1 %>% select(auto)
+report(best_model)
+
+#looking at residuals
+fit1 %>%
+  select(auto) %>%
+  gg_tsresiduals()
+
+#Doing Ljung box test on residuals
+Box.test(augment(best_model)$.resid, lag=36, fitdf = 6, type = "Lj")
+```
+
+Though this auto model which R suggested has lowest AICc but still its residuals do not look like white noise as we see auto-correlation above in the residuals. As well as Box-Pierce test confirms that p value<0.05 and so there exist some autocorrelation in the residuals. And this model also do not pass this test.
+
+There are a few significant spikes in the ACF, and the model fails the Ljung-Box test. The model can still be used for forecasting, but the prediction intervals may not be accurate due to the correlated residuals.
+
+```{r}
+retail
+```
+
+#forecasting 3 years ahead
+
+let's forecast for 3 years ahead
+
+First using the model which is best of all the models : Auto model and then using arima012011
+```{r}
+#forecasting 3 years ahead
+fc <- fit1 %>%
+  forecast(h = "3 years")
+
+#forecasting seen using auto model
+fc %>%
+  filter(.model=="auto") %>%
+  autoplot(retail)
+
+#forecasting seen using arima012011 model
+fc %>%
+  filter(.model=="arima012011") %>%
+  autoplot(retail)
+```
+#Get the latest figures from https://fred.stlouisfed.org/categories/11 to check the accuracy of your forecasts.
+
+Now to check the accuracy of the model
+- Download latest data from given website
+- Use the data we have fit our models on as training data 
+- Use the downloaded data as test data from the period which we do not have data in training data
+
+```{r}
+#reading data from excel
+library(readxl)
+read_test <- read_excel("D:\\Sem 2 - Spring 2022\\ECON 825\\Retail_xls\\Retail.xls")
+head(read_test)
+```
+
+```{r}
+retail
+```
+Now "retail", which has our training data, has data till 2019 Sep , so in order to forecast 3 years ahead , we will take test data from 2019 Oct onwards
+
+
+```{r}
+#test data set
+test <- read_test %>% mutate(Month = yearmonth(DATE), Employed = CEU4200000001)%>%
+  select(Month,Employed) %>% as_tsibble(index = Month) %>%
+  filter_index("2019 Oct" ~ .)
+test
+```
+
+```{r}
+train <- retail %>% filter_index(~ "2019 Sep")
+fit <- train %>%
+  model(
+    arima012011 = ARIMA(log(Employed) ~ pdq(0,1,2) + PDQ(0,1,1)),
+    arima210110 = ARIMA(log(Employed) ~ pdq(2,1,0) + PDQ(1,1,0)),
+    arima210011 = ARIMA(log(Employed) ~ pdq(2,1,0) + PDQ(0,1,1)),
+    arima012110 = ARIMA(log(Employed) ~ pdq(0,1,2) + PDQ(1,1,0)),
+    arima012210 = ARIMA(log(Employed) ~ pdq(0,1,2) + PDQ(2,1,0)),
+   
+    auto = ARIMA(log(Employed), stepwise = FALSE, approx = FALSE)
+  )
+
+fc <- fit %>% forecast(h = "3 years")
+
+fc %>% accuracy(test)
+
+fc %>%
+  filter(.model=="auto") %>%
+  autoplot(train) +
+  geom_line(data=test, aes(x=Month, y=Employed), col='red')
+```
+
+- From above, we can see that RMSE of the auto model ARIMA(1,1,2)(2,1,1) on test data is lowest which happen to be the best model looking at AICc as well. Though even auto model ARIMA(1,1,2)(2,1,1) could not pass the residual test but we can still say that this is the best model amongst the one we considered
+- Also, we can see that our initial model ARIMA(0,1,2)(0,1,1)12, which had lowest AICc of all the models we guessed has comparatively large RMSE here
+- The red line is test data which is actually what we see after 2020 and blue line is the forecast after we trained our model on training data. We even see forecasting with auto model, and see it is slightly matching to actual test data, though it could not capture the drop around April 2020, which is again was actually not seen in the entire time series before 2020 https://fred.stlouisfed.org/series/CEU7000000001
+
+#Eventually, the prediction intervals are so wide that the forecasts are not particularly useful. How many years of forecasts do you think are sufficiently accurate to be usable?
+
+- There is a huge sharp drop in April 2020 in employed people in retail trade which our forecast is not able to capture. So, let's try to zoom in into the graph and keep changing forecast period from 2 months - 1 year
+- From below graphs, it can been seen clearly that if forecast period is 6 months or 7 months, then it is giving a good forecast when compared to test data. But upon increasing months from 6 or 7, it can be seen that the forecast tends to vary a little from original 
+
+```{r}
+
+fit %>% forecast(h = 6) %>%
+  filter(.model=="auto") %>% 
+  autoplot(train %>% filter(year(Month) > 1999)) +
+  geom_line(data=test, aes(x=Month, y=Employed), col='red')
+
+fit %>% forecast(h = 7) %>%
+  filter(.model=="auto") %>% 
+  autoplot(train %>% filter(year(Month) > 1999)) +
+  geom_line(data=test, aes(x=Month, y=Employed), col='red')
+
+fit %>% forecast(h = 8) %>%
+  filter(.model=="auto") %>% 
+  autoplot(train %>% filter(year(Month) > 1999)) +
+  geom_line(data=test, aes(x=Month, y=Employed), col='red')
+
+fit %>% forecast(h = "1 year") %>%
+  filter(.model=="auto") %>% 
+  autoplot(train %>% filter(year(Month) > 1999)) +
+  geom_line(data=test, aes(x=Month, y=Employed), col='red')
+```
+
+
+>>Q17. Before doing this exercise, you will need to install the Quandl package in R using
+
+
+#install.packages("Quandl") - package is installed already so not coding here
+
+
+#Select a time series from Quandl. Then copy its short URL and import the data using
+
+```{r}
+library(Quandl)
+results <- Quandl.search(query="Petroleum", silent=FALSE)
+results
+```
+
+Now, let's select "WTI Crude Oil price" from the United States department of Energy data getting updated monthly, looking for code: EIA/PET_RWTC_M 
+https://static.quandl.com/EIA+codes/EIA_PET_codes.txt
+
+```{r}
+y <- Quandl::Quandl("EIA/PET_RWTC_M")
+head(y)
+
+y1 <- y %>%
+  mutate(Month = yearmonth(Date)) %>%
+  as_tsibble(index=Month)
+
+head(y1)
+```
+
+#Plot graphs of the data, and try to identify an appropriate ARIMA model.
+
+```{r}
+y1 %>% autoplot(Value)
+
+#Box-Cox transformation
+lambda1 <- y1 %>%
+  features(Value, features = guerrero) %>%
+  pull(lambda_guerrero)
+
+y1 %>%
+  autoplot(box_cox(Value, lambda1)) +
+  labs(y = "", title = TeX(paste0("Transformed Petroleum Price with $\\lambda$ = ",
+         round(lambda1,2))))
+
+```
+
+Above we can see the time series has an increasing trend but no seasonality is seen. We will use box-cox transformed series as some variance is needed to stabilized here. The data is not stationary because it has a trend and may be some cyclicity in it. The ACF plot is also useful for identifying non-stationary time series. For a stationary time series, the ACF will drop to zero relatively quickly, while the ACF of non-stationary data decreases slowly. The below ACF plot also suggest non-stationary time series.
+
+```{r}
+y1 %>% ACF(Value) %>% autoplot()
+```
+
+Running KPSS to statistically justify that data is stationary or not and find order of the differencing to make it stationary if it is not- Null hypothesis (Ho): Data is stationary - Alternate hypothesis (Halt): Data is non-stationary
+
+```{r}
+y1 %>% features(box_cox(Value,lambda1), unitroot_kpss)
+```
+
+So, since p value <0.05 so we reject null hypothesis and say that data is not stationary.
+
+```{r}
+#no. of seasonal difference
+y1 %>% mutate(t_Value = box_cox(Value,lambda1)) %>%
+  features(t_Value, unitroot_nsdiffs)
+```
+
+As seen, there is no seasonal difference required in the time series. Which also suggest there is no seasonality in it.
+
+```{r}
+#no. of regular difference
+y1 %>% mutate(ts_Value = box_cox(Value,lambda1)) %>%
+  features(ts_Value, unitroot_ndiffs)
+```
+
+So from above KPSS test, it is confirmed that data is non- stationary and first order difference is needed. 
+
+Plotting the first order differenced time series and analyzing it
+
+```{r}
+y1 %>%
+  gg_tsdisplay(difference(box_cox(Value,lambda1)), plot_type="partial")
+```
+
+Observations
+
+- There is constant variance seen in the differenced time series with some spikes
+- ACF
+  - We can see one spike at lag 1 , which suggests MA(1) component
+- PACF
+  - We can see last significant spike at lag 2,  which suggests AR(2) component 
+  
+So, we can consider ARIMA(0,1,1) or ARIMA(2,1,0) or ARIMA(2,1,1) models in addition to model selected by auto
+
+```{r}
+fit <- y1 %>%
+  model(
+    arima011 = ARIMA(box_cox(Value,lambda1) ~ pdq(0,1,1) + PDQ(0,0,0)),
+    arima210 = ARIMA(box_cox(Value,lambda1) ~ pdq(2,1,0) + PDQ(0,0,0)),
+    arima211 = ARIMA(box_cox(Value,lambda1) ~ pdq(2,1,1) + PDQ(0,0,0)),
+    auto1 = ARIMA(box_cox(Value,lambda1)),
+    auto2 = ARIMA(box_cox(Value,lambda1)~ pdq(d=1), stepwise = FALSE, approx = FALSE)
+  )
+glance(fit) %>% arrange(AICc)
+```
+
+Among all the models we thought of, AICc came out to be lowest for ARIMA(1,1,2) and my guess of ARIMA(2,1,1) is quite close to it. But the best model with lowest AICc is ARIMA(1,1,2)
+
+```{r}
+#selecting best model
+best_model <- fit %>% select(auto2)
+
+#reporting parameters of best model
+report(best_model)
+```
+
+
+#Do residual diagnostic checking of your ARIMA model. Are the residuals white noise?
+```{r}
+#looking at residuals
+best_model %>%
+  gg_tsresiduals()
+
+#Doing Ljung box test on residuals
+augment(best_model) %>%
+  features(.innov, ljung_box, lag=24, dof=3)
+```
+
+Observations
+
+- By looking at distribution of the residuals, it looks like normal and centered around zero
+- There is also a constant variance seen in the time plot of residuals
+- The ACF plot shows no auto-correlation apart from one spike. To cross check what we see from ACF plot we performed Portmanteau test
+  - Applying Portmanteau tests for autocorrelations: ljung_box
+    - null hypothesis: Autocorrelation = 0
+    - Alternate hypothesis : Autocorrelation!= 0
+    - So, if p-value is large (>0.05), we fail to reject null hypothesis and say that                 autocorrelations are zero
+- Here p-value >0.05, we cannot reject null hypothesis, and say that there is no autocorrelation and this is like white noise
+
+#Use your chosen ARIMA model to forecast the next four years.
+
+```{r}
+best_model %>%
+  forecast(h = "4 years") %>%
+  autoplot(y1)
+
+```
+
+#Now try to identify an appropriate ETS model.
+
+This time series does not have seasonality but has trend in it. So, lets test ETS(AAN), ETS(AAdN) and ETS() function to find best ETS model. 
+
+```{r}
+ets_all_models <- y1 %>%
+  model(AAdN = ETS(box_cox(Value,lambda1) ~ error("A") + trend("Ad") + season("N")),
+    AAN = ETS(box_cox(Value,lambda1) ~ error("A") +  trend("A") + season("N")),
+    ETS = ETS(box_cox(Value,lambda1))
+    )
+accuracy(ets_all_models)
+```
+
+It looks like best model is ETS(AAdN) with lowest RMSE 4.46
+
+#Do residual diagnostic checking of your ETS model. Are the residuals white noise?
+
+```{r}
+best_model2 <- ets_all_models %>%
+  select(AAdN) 
+best_model2 %>%
+  gg_tsresiduals()
+```
+Observations
+
+- If we look at above graphs, it is clearly visible that the histograms of the residual is almost normal and centered around zero
+- There is no significant auto-correlation in the residual series, except at lag 1 where we see a very large spike. In such situation, it is always recommended to check autocorrelation by performing Portmanteau test
+- The time plot of the residuals shows that the variation of the residuals stays approximately the same across the historical data, apart from some outliers
+- Let’s test whether the first l=24 autocorrelations
+  - Applying Portmanteau tests for autocorrelations: ljung_box
+    - null hypothesis: Autocorrelation = 0
+    - Alternate hypothesis : Autocorrelations!= 0 -SO, if p-value is large (>0.05), we fail to        reject null hypothesis and say that autocorrelations are zero -If p-value is small, we          reject null hypothesis, and say that autocorrelations are not zero
+
+```{r}
+Box.test(augment(best_model2)$.resid, lag=24, fitdf = 5, type = "Lj")
+```
+
+- Post running the test, we found p value as 0.022 <0.05, so we reject null hypothesis and say that autocorrelations are not zero and hence the forecast is biased, as it is one assumption that residuals should not be autocorrelated. 
+
+#Use your chosen ETS model to forecast the next four years.
+
+```{r}
+best_model2 %>%
+  forecast(h = "4 years") %>%
+  autoplot(y1)
+
+best_model2 %>% report()
+```
+
+#comparing ARIMA and ETS and choosing best model
+
+- Though we cannot compare different class of models by looking at AICc values as these models have different way of calculating likelihood. But there exists some equivalence in the ETS and ARIMA models. Like ARIMA(1,1,2) is equivalent to ETS(A,Ad,N). In our case these were the two models we selected
+- But it is seen above that in ARIMA there was no autocorrelation found in the model residuals. While there was autocorrelation in ETS model residuals
+- Also, the prediction interval for ARIMA seems to lie somewhere between 25 to 200, as seen from the graph. While the prediction interval of ETS lie somewhere between 25 to 700. So, the prediction interval is narrow for ARIMA than ETS. Prediction interval of 95% tells that the observation will fall in that range 95% of the time. So, there is more uncertainty in ETS above
+
+From the above perspective I might select ARIMA. But a better way to select the best model out of ARIMA and ETS is either cross validation or dividing data into test and train, fitting models on training data and thereafter checking its accuracy on test data.
+
+#comparing both models(ARIMA and ETS) using training and test data. *(For a matter of convenience I am using ARIMA() non stepwise and ETS() functions. As we cannot use above selected models as the training dataset will change so the model parameters might change. We could have again predicted best ARIMA and ETS models like we did in above questions looking at ACF and PACF plot.)*
+
+```{r}
+y1
+
+#1986 Jan - 2022 Jan
+```
+
+Fitting ARIMA and ETS model we found above on training data and checking its accuracy on test data
+Training Data: 1986 JAN to JAN 2010
+Test Data: FEB 2010 to JAN 2022
+```{r}
+y1_train <- y1 %>%
+  select(Month,Value) %>%
+  filter_index(. ~ "2010 Jan")
+```
+
+```{r}
+#box-cox transformation
+lambda2 <- y1_train %>%
+  features(Value, features = guerrero) %>%
+  pull(lambda_guerrero)
+
+#fitting arima to test data
+fit_arima <- y1_train %>%
+  model(ARIMA(box_cox(Value,lambda2)~ pdq(d=1) +PDQ(0,0,0), stepwise = FALSE, approx = FALSE))
+
+#checking its parameters and AICc
+report(fit_arima)
+
+#checking residuals
+fit_arima %>% gg_tsresiduals(lag_max = 24)
+```
+
+```{r}
+#Box pierce test for residuals
+augment(fit_arima) %>%
+  features(.innov, ljung_box, lag = 24, dof = 3)
+```
+
+
+```{r}
+#fitting ETS to test data
+fit_ets <- y1_train %>% model(ETS(box_cox(Value,lambda2)))
+
+#checking its parameters and AICc
+report(fit_ets)
+
+#checking residulals
+fit_ets %>% gg_tsresiduals(lag_max = 24)
+
+#Box pierce test for residuals
+Box.test(augment(fit_ets)$.resid, lag=24, fitdf = 5, type = "Lj")
+```
+
+```{r}
+# Generate forecasts and compare accuracy over the test set
+bind_rows(
+    fit_arima %>% accuracy(),
+    fit_ets %>% accuracy(),
+    fit_arima %>% forecast(h = "12 years") %>% accuracy(y1 %>% filter_index("2010 Feb" ~ .)),
+    fit_ets %>% forecast(h = "12 years") %>% accuracy(y1 %>% filter_index("2010 Feb" ~ .))
+  ) %>%
+  select(-ME, -MPE, -ACF1)
+```
+
+
+So, the best models now predicted came out to be ARIMA(1,1,2) w/ drift and ETS(A,Ad,N), which are similar to what we saw in previous parts of the questions. And I choose ARIMA model over ETS in this case to be a better model for following reasons.
+
+Observations
+
+- When we fit both ARIMA and ETS on training data and then checked model residuals. The residuals of ARIMA are closer to white noise than ETS.
+- For ARIMA
+    - The time plot of the residuals shows that the variation of the residuals stays                  approximately the same across the historical data, apart from some outliers
+    - The histogram of residuals looked normal
+    - There is also no auto correlation seen visually as well as statistically Ljung box test         confirmed no autocorrelation as p value > 0.05
+    - So, residuals from this model does look like white noise and so not only the forecast          will be good but prediction interval will also be accurate
+    - Also, the RMSE on test data is lower for ARIMA model than ETS model
+- For ETS
+    - The histogram of residual is skewed and not normal, which indicates that probably the          forecast from this method will be good, but prediction intervals computed can be               inaccurate as that are computed assuming normal distribution
+    - There is almost constant variance seen in time plot
+    - The residuals do not look like white noise. There is some autocorrelation seen in              residuals and Ljung test confirms the same as p value <0.05.
+    
+* we could have compared both models using cross-validation as well, but as the above train and test data method is faster than cross-validation, so I opted to do this way. Also, cross-validation was taking a lot of time to run and still didn't run and end up hanging my system so used this method instead.
+
+# References
+
+- Hyndman, Rob J. “Forecasting: Principles&nbsp;and&nbsp;Practice (3rd Ed).” Chapter 9 ARIMA         Models, https://otexts.com/fpp3/arima.html
+- Business, Fuqua School of. Seasonal Arima Models,                           
+    https://faculty.fuqua.duke.edu/~rnau/Decision411_2007/seasarim.htm 
+- “Nasdaq Data Link.” Data.nasdaq.com,         
+    https://data.nasdaq.com/data/EIA-us-energy-information-administration-data/documentation?an     chor=indicator-codes
