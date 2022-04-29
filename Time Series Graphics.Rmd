@@ -1,0 +1,590 @@
+---
+title: "Time Series Graphics_Kratika_Sharma"
+author: "Kratika Sharma"
+date: "2/20/2022"
+output: html_document
+---
+
+```{r}
+library(fpp3)
+library(dplyr)
+library(tsibble)
+```
+
+> # Q1
+
+> Use the help function to explore what the series `gafa_stock`, `PBS`, `vic_elec` and `pelt` represent.
+
+```{r}
+help(gafa_stock)
+help(PBS)
+help(vic_elec)
+help(pelt)
+```
+
+> a. Use `autoplot()` to plot some of the series in these data sets.
+> b. What is the time interval of each series?
+
+1. Description of timeseries:
+* gafa_stock is a time series of stock prices in $USD from 2014-2018 for Apple, Amazon, Facebook and Google.
+* PBS is a monthly tsibble with two values:
+Scripts:	Total number of scripts and Cost:	Cost of the scripts in $AUD
+* vic_elec is a half-hourly tsibble with three values:
+Demand:	Total electricity demand in MW.
+Temperature:	Temperature of Melbourne (BOM site 086071).
+Holiday:	Indicator for if that day is a public holiday.
+
+* pelt is an annual tsibble with two values:
+Hare:	The number of Snowshoe Hare pelts traded.
+Lynx:	The number of Canadian Lynx pelts traded.
+
+## gafa_stock
+
+
+```{r}
+gafa_stock
+```
+
+1. gafa_stock:
+* Interval for this series is daily. 
+* It looks like that observations occur only on certain days which might be trading days, which creates some missing values as certain days are missing in the data and for that reason we see [!] symbol in tsibble, which means undefined.
+* Closing prices for these stocks have risen for most of the series, till late mid 2018 and started dropping afterwards.
+
+
+```{r}
+gafa_stock%>%autoplot(Close)+ggtitle("Closing price of stocks")
+```
+
+
+
+## PBS
+
+```{r}
+PBS
+```
+
+There are too many series to plot. So looking at monthly total cost.
+
+2. PBS:
+* Interval for these series is monthly. 
+* The time series have upward trend with seasonality.
+
+
+```{r}
+PBS %>% 
+  select(Month,Type,Cost)%>%
+  summarise(total_Cost = sum(Cost))%>%
+  autoplot(total_Cost)+ggtitle("Monthly total cost")
+```
+
+
+
+## vic_elec
+
+```{r}
+vic_elec
+```
+
+3. vic_elec:
+* Interval of this series is half-hourly. Data is available at 30 minute intervals.
+* Getting half-hourly plot of Demand
+* Getting half-hourly plot of temperature
+* Getting daily plot of maximum temperature
+
+```{r}
+vic_elec %>% autoplot(Demand) + ggtitle("Half-Yearly plot of Demand")
+vic_elec %>% autoplot(Temperature)+ggtitle("Half-yearly plot of Temperature")
+m_temp <- vic_elec %>%
+  index_by(Day = date(Time))%>%
+  summarize(Temperature = max(Temperature))
+m_temp %>% autoplot(Temperature)+xlab("Daily")+ylab("Maximum temperature")+ggtitle("Daily Plot of max temperature")
+```
+
+The above graphs suggests that this has an annual seasonal pattern, with higher demand during summer and winter.
+
+```{r}
+vic_elec %>%
+  filter(yearmonth(Time) == yearmonth("2012 May")) %>%
+  autoplot(Demand)
+```
+
+Zooming into one particular month of the year, it appears to have a daily pattern as well, where less electricity is used over the night. There is also less demands on the weekends when observing the graph closely. 
+
+
+## pelt
+
+
+```{r}
+pelt
+```
+
+4. pelt:
+* Interval of this series is yearly.
+* Getting yearly plot of Lynx 
+* Getting yearly plot of Hare
+
+
+```{r}
+pelt %>% autoplot(Lynx)+ggtitle("Yearly Plot of Lynx")
+```
+
+lynx trappings looks cyclic. Similar pattern can be seen for hare, though this series looks more erratic.
+
+```{r}
+pelt%>% autoplot(Hare)+ggtitle("Yearly Plot of Hare")
+```
+
+
+> # Q2
+
+> Use `filter()` to find what days corresponded to the peak closing price for each of the four stocks in `gafa_stock`.
+
+```{r}
+gafa_stock %>%
+  group_by(Symbol) %>%
+  filter(Close == max(Close)) %>%
+  ungroup() %>%
+  select(Symbol, Date, Close)
+```
+
+
+1. Looking for Amazon Stock
+```{r}
+gafa_stock %>%
+filter(Symbol == "AMZN") %>%
+autoplot(Close) +
+ggtitle("Amazon closing stock price") +
+xlab("Day") + ylab("$")
+```
+
+2. Looking for Google Stock
+```{r}
+gafa_stock %>%
+filter(Symbol == "GOOG") %>%
+autoplot(Close) +
+ggtitle("Google closing stock price") +
+xlab("Day") + ylab("$")
+```
+
+3. Looking for Apple Stock
+```{r}
+gafa_stock %>%
+filter(Symbol == "AAPL") %>%
+autoplot(Close) +
+ggtitle("Apple closing stock price") +
+xlab("Day") + ylab("$")
+```
+
+4. Looking for Facebook Stock
+```{r}
+gafa_stock %>%
+filter(Symbol == "FB") %>%
+autoplot(Close) +
+ggtitle("Facebook closing stock price") +
+xlab("Day") + ylab("$")
+```
+
+
+> # Q3
+
+> Download the file `tute1.csv` from [the book website](http://OTexts.com/fpp3/extrafiles/tute1.csv), open it in Excel (or some other spreadsheet application), and review its contents. You should find four columns of information. Columns B through D each contain a quarterly series, labelled Sales, AdBudget and GDP. Sales contains the quarterly sales for a small company over the period 1981-2005. AdBudget is the advertising budget and GDP is the gross domestic product. All series have been adjusted for inflation.
+
+A) Reading tute1 from csv: tute1 is currently a tibble and not time series
+```{r}
+tute1 <- readr::read_csv("D:/Sem 2 - Spring 2022/ECON 825/tute1.csv")
+View(tute1)
+tute1
+```
+
+B) Now converting this tute1 tibble to a time-series and storing in new frame
+```{r}
+mytimeseries <- tute1 %>%
+  mutate(Quarter = yearmonth(Quarter)) %>%
+  as_tsibble(index = Quarter)
+```
+
+```{r}
+mytimeseries
+```
+
+C) 
+```{r}
+mytimeseries %>%
+  pivot_longer(-Quarter) %>%
+  ggplot(aes(x = Quarter, y = value, colour = name)) + geom_line() +
+  facet_grid(name ~ ., scales = "free_y")
+```
+
+Without facet_grid: Without facet_grid, all the graphs are plotted on one plane, which makes reading all three a little difficult. Here the value range is different for all three sets but with facet_grid those range of values are separated and without facet_grid these range is combined.
+
+```{r}
+mytimeseries %>%
+  pivot_longer(-Quarter) %>%
+  ggplot(aes(x = Quarter, y = value, colour = name)) + geom_line()
+```
+
+
+
+> # Q5
+
+> a. Download `tourism.xlsx` from [the book website](http://OTexts.com/fpp3/extrafiles/tourism.xlsx) and read it into R using `read_excel()` from the `readxl` package.
+> b. Create a tsibble which is identical to the `tourism` tsibble from the `tsibble` package.
+> c. Find what combination of `Region` and `Purpose` had the maximum number of overnight trips on average.
+> d. Create a new tsibble which combines the Purposes and Regions, and just has total trips by State.
+
+Tourism from tsibble package
+```{r}
+tourism
+```
+
+A) and B)
+
+```{r}
+tour <- readxl::read_excel("D:/Sem 2 - Spring 2022/ECON 825/tourism.xlsx")
+tour
+```
+```{r}
+tourism1 <- tour %>%
+  mutate(Quarter = yearquarter(Quarter))%>%
+  as_tsibble(index = Quarter, key = c(Region,State,Purpose))
+```
+
+Now tourism1 is exact tsibble replica of tourism tsibble from tsibble package
+
+```{r}
+tourism1
+```
+
+C)
+
+```{r}
+tourism1 %>%
+  group_by(Region, Purpose) %>%
+  summarise(Trips = mean(Trips)) %>%
+  ungroup() %>%
+  filter(Trips == max(Trips))
+```
+
+D)
+
+```{r}
+tourism2 <- tourism1 %>%
+  group_by(State) %>%
+  summarise(Trips = sum(Trips)) %>%
+  ungroup()
+tourism2
+```
+
+> # Q6
+
+> Create time plots of the following four time series: `Bricks` from `aus_production`, `Lynx` from `pelt`, `Close` from `gafa_stock`, `Demand` from `vic_elec`.
+>
+>    + Use `?` (or `help()`) to find out about the data in each series.
+>    + For the last plot, modify the axis labels and title.
+
+```{r}
+help("aus_production")
+help("pelt")
+help("gafa_stock")
+help("vic_elec")
+```
+
+## Bricks
+
+```{r}
+aus_production %>% autoplot(Bricks)
+```
+
+An upward trend is seen until 1980, after which the number of bricks produced starts to decline. A seasonal pattern is clear in this data. Some sharp drops in some quarters is also seen.
+
+## Lynx
+
+```{r}
+pelt %>% autoplot(Lynx)
+```
+
+We can say that lynx trappings are cyclic, as the spacing between the peaks is irregular and approximately after 10 years.
+
+## Close
+
+```{r}
+gafa_stock %>% autoplot(Close)
+```
+
+We could see the start and end of the plot for all the Symbol(Stock) is different and significantly different. 
+
+```{r}
+gafa_stock %>%
+  ggplot(aes(x=Date, y=Close, group=Symbol)) +
+  geom_line(aes(col=Symbol)) +
+  facet_grid(Symbol ~ ., scales='free')
+```
+
+We could see a downward trend in later part of 2018.
+
+
+
+## Demand
+
+```{r}
+vic_elec %>% autoplot(Demand) +
+  xlab("Half-hourly") + ylab("Demand")+ggtitle("Half-hourly electricity demand")
+```
+
+High seasonality  is observed in the data.
+
+
+> # Q8
+> Monthly Australian retail data is provided in aus_retail. Select one of the time series as follows
+
+
+```{r}
+set.seed(12345678)
+myseries <- aus_retail %>%
+  filter(`Series ID` == sample(aus_retail$`Series ID`,1))
+myseries %>%
+  autoplot(Turnover) +
+  labs(y = "Turnover", x = "Time",
+       title = myseries$Industry[1],
+       subtitle = myseries$State[1])
+```
+
+
+```{r}
+myseries %>%
+  gg_season(Turnover, labels = "both") +
+  labs(y = "Turnover (million $AUD)",
+       title = myseries$Industry[1],
+       subtitle = myseries$State[1])
+```
+
+
+* From the autoplot we could see a non-linear upward trend in the series and seasonal pattern. 
+* The seasonal plot emphasizes the seasonality of the data.
+* We see significant increases in turnover in clothing,footwear, and personal accessory retailing can be observed in November-December (probably a Christmas and holiday). 
+* There is also a peak in July.
+* 2016 had an unusual pattern in the first half of the year.
+
+```{r}
+myseries %>% gg_subseries(Turnover)+ylab("Turnover")+ggtitle("Subseries Plot: Clothing, footwear and personal accessory retailing vs Turnover")
+```
+
+* The subseries plot highlights the seasonality of the data, but highlights it clearer than the seasonal plot.
+* There is a strong trend in all months, with the largest trend in December and a larger increase in July and August than most other months.
+* December sees the highest mean and higher ceiling and floor, obviously because of Christmas.
+* 2020 has seen some drops in each month probably due to covid.
+
+```{r}
+myseries %>%
+  gg_lag(Turnover, lags=1:24, geom='point') + facet_wrap(~ .lag, ncol=6)
+myseries %>%
+  ACF(Turnover, lag_max = 30) %>%
+  autoplot()
+```
+
+ACF and lag plot
+
+* The data has a trend as the auto-correlation for small lags is large and positive.
+* The ACF of this trended time series have positive values that slowly decreases with time and then increases and then decrease.
+* The decrease in lags highlights the trend, while the scalloped shape shows the seasonality of the turnover data. 
+* There is high positive autocorelation at lag 12 and 24, which shows the seasonality in the data.
+
+> # Q9
+>Use the following graphics functions: autoplot(), gg_season(), gg_subseries(), gg_lag(), ACF() and explore features from the following time series: “Total Private” Employed from us_employment, Bricks from aus_production, Hare from pelt, “H02” Cost from PBS, and us_gasoline.
+>Can you spot any seasonality, cyclicity and trend? What do you learn about the series? What can you say about the seasonal patterns? Can you identify any unusual years?
+
+## Total Private Employment in the US
+
+```{r}
+us_employment %>%
+  filter(Title == "Total Private") %>%
+  autoplot(Employed) + ggtitle("Autoplot of total private employment vs month of year")
+```
+
+
+```{r}
+us_employment %>%
+  filter(Title == "Total Private") %>%
+  gg_season(Employed)+ggtitle("Seasonal Plot:total private employment vs month")
+```
+
+```{r}
+us_employment %>%
+  filter(Title == "Total Private") %>%
+  gg_subseries(Employed)+ggtitle("Subseries plot:total private employment vs month")
+```
+
+```{r}
+us_employment %>%
+  filter(Title == "Total Private") %>%
+  gg_lag(Employed, lags=1:24, geom='point') + facet_wrap(~ .lag, ncol=6)+ggtitle("Lag plot")
+```
+
+```{r}
+us_employment %>%
+  filter(Title == "Total Private") %>%
+  ACF(Employed) %>%
+  autoplot()+ggtitle("ACF plot")
+```
+
+Observations for this series
+
+* There is a strong upward trend in the series. 
+* Certain cyclic behavior is seen, with a high drop probably due to the global financial crisis in late 2000s.
+* We could see a little bit of seasonality as some months have slightly higher employment.
+* The data has a trend as the auto-correlation for small lags is large and positive.
+* The ACF of this trended time series have positive values that slightly decreases with time.
+* The trend is very overpowering in the data. May be if seen at weekly level or daily level, some seasonality could be seen.But it is not possible to comment on this with current plots.
+
+
+
+## Brick production in Australia
+
+
+```{r}
+aus_production %>%
+  autoplot(Bricks)+ggtitle("Autoplot of Bricks production in Australia quaterly")
+```
+
+
+```{r}
+aus_production %>%
+  gg_season(Bricks)+ggtitle("Seasonal plot of Bricks production in Australia quaterly")
+```
+
+
+
+```{r}
+aus_production %>%
+  gg_subseries(Bricks)+ggtitle("Subseries plot of Bricks production in Australia quaterly")
+```
+
+
+
+```{r}
+aus_production %>%
+  gg_lag(Bricks, geom='point')+ggtitle("Lag Plot")
+aus_production %>%
+  ACF(Bricks) %>% autoplot()+ggtitle("ACF Plot")
+```
+
+Observations for this series
+
+* A positive trend is seen till 1980.
+* A negative trend is seen after 1980. 
+* Quarterly seasonality, with some cyclicity is seen.
+* The recessions in the 1970s and 1980s is also highlighted from the graph.
+* Brick production is lowest in the first quarter and peak are observed in quarter 2 or quarter 3.
+* The decrease in the last 20-25 years can be seen to be weakest in Q1. Other quarters have seen sharp decrease.
+* The seasonality is seen as peaks at lags 4, 8, 12, etc. The trend is seen with the decline on the positive side.
+* The data has a trend as the auto-correlation for small lags is large and positive.
+* The ACF of this trended time series have positive values that slightly decreases with time.
+* The decrease in lags highlights the trend, while the scalloped shape shows the seasonality of the turnover data. 
+* There is high positive autocorelation at lag 1 and 4, which shows the seasonality in the data.
+
+
+## Hare trappings in Canada
+
+```{r}
+pelt %>%
+  autoplot(Hare)+ggtitle("Autoplot of hare trappings in Canada")
+```
+
+```{r}
+pelt %>% gg_subseries(Hare)+ggtitle("Subseries plot of hare trappings in canada")
+```
+
+
+```{r}
+pelt %>%
+  gg_lag(Hare, geom='point')+ggtitle("Lag Plot")
+pelt %>%
+  ACF(Hare) %>% autoplot()+ggtitle("ACF Plot")
+```
+
+Observations in the hare trappings in pelt series
+
+* There is cyclic behavior seen with variation in the length of the period.
+* The cyclic period seems to be of about 10 given the local maximum in ACF plot at lag 10.
+* The gg_season plot is giving error as the data is only yearly with no months, weeks, or days in it so it is not possible to change the temporal granularity. ( Error as: The data must contain at least one observation per seasonal period) 
+
+## H02 sales in Australia
+
+* There are four series related to H02 sales, calculation summarized cost:
+
+```{r}
+Ho2 <- PBS %>%
+  filter(ATC2 == "H02") %>%
+  group_by(ATC2) %>%
+  summarise(Cost = sum(Cost)) %>%
+  ungroup()
+Ho2 %>%
+  autoplot(Cost)+ggtitle("Autoplot of Ho2 sales in Australia")
+```
+
+```{r}
+Ho2 %>%
+  gg_season(Cost)+ggtitle("Seasonal plot of Ho2 sales")
+```
+
+```{r}
+Ho2 %>%
+  gg_subseries(Cost)+ggtitle("Subseries plot of Ho2 sales")
+```
+
+
+```{r}
+Ho2 %>%
+  gg_lag(Cost, geom='point', lags=1:24)+ ggtitle("Lag Plot")
+Ho2 %>%
+  ACF(Cost) %>% autoplot()+ggtitle("ACF plot")
+```
+
+Observations in the series
+
+* A positive trend with strong monthly seasonality, with sudden drop every February and then rising upward.
+* The upward trends are greater in the higher peaking months there by increasing seasonal variation.
+* The mean for all years in a month is seem to be rising post February.
+* The large January sales is seen as separate cluster of points in the lag plots. 
+* The strong seasonality is observed in the ACF plot.
+
+## US gasoline sales
+
+```{r}
+us_gasoline %>%
+  autoplot(Barrels)+ggtitle("Autoplot of US gasoline sales")
+```
+
+
+```{r}
+us_gasoline %>%
+  gg_season(Barrels)+ggtitle("Seasonal Plot")
+```
+
+
+
+```{r}
+us_gasoline %>%
+  gg_subseries(Barrels)+ggtitle("Subseries Plot")
+```
+
+
+
+```{r}
+us_gasoline %>%
+  gg_lag(Barrels, geom='point', lags=1:24)+ggtitle("Lag Plot")
+us_gasoline %>%
+  ACF(Barrels, lag_max = 180) %>% autoplot()+ggtitle("ACF Plot")
+```
+
+
+* A positive upward trend is seen until 2008, and then the global financial crisis caused a drop in sales until 2012. 
+* The mean lines in gg_subseries graph is helping to see some average seasonal pattern.
+* From gg_season graph, the seasonality seem to be changing over time.
+* The seasonality is further seen if we increase the lags to at least 1.5-2 years years.
+* The scalloped structure in ACF graph shows the seasonality in the data.
+* The data has a trend as the auto-correlation for small lags is large and positive.
+* The ACF of this trended time series have positive values that slightly decreases with time.
+* The decrease in lags highlights the trend, while the scalloped shape shows the seasonality in the data. 
+* Although the noise in the data is making it very hard to catch seasonal patterns from gg_season and gg_subseries plots. But scalloped shape in ACF plot confirms seasonality in the data.
+
